@@ -99,7 +99,7 @@ func (a HTTPAdapter) searchWeb(ctx context.Context, req capability.SearchRequest
 		h := map[string]string{"X-Subscription-Token": key.Value, "Accept": "application/json"}
 		var raw struct {
 			Web struct {
-				Results []struct{ Title, URL, Description, Profile string } `json:"results"`
+				Results []struct{ Title, URL, Description string } `json:"results"`
 			} `json:"web"`
 		}
 		if err := a.getJSON(ctx, u, h, &raw); err != nil {
@@ -232,6 +232,23 @@ func (a HTTPAdapter) searchNews(ctx context.Context, req capability.SearchReques
 			rr := result(a.id, i, r.URL, r.Title, r.Domain, "news")
 			rr.SourceName = r.Domain
 			out = append(out, rr)
+		}
+		return out, nil
+	case "brave":
+		key, _ := a.creds.GetField("brave", "search_api_key", "BRAVE_SEARCH_API_KEY")
+		u := "https://api.search.brave.com/res/v1/news/search?q=" + q + "&count=" + fmt.Sprint(limit(req.Limit))
+		h := map[string]string{"X-Subscription-Token": key.Value, "Accept": "application/json"}
+		var raw struct {
+			Results []struct {
+				Title, URL, Description, Age string
+			} `json:"results"`
+		}
+		if err := a.getJSON(ctx, u, h, &raw); err != nil {
+			return nil, err
+		}
+		var out []capability.SearchResult
+		for i, r := range raw.Results {
+			out = append(out, result(a.id, i, r.URL, r.Title, r.Description, "news"))
 		}
 		return out, nil
 	case "guardian":

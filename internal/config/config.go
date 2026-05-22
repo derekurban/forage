@@ -206,6 +206,11 @@ func Load() (Config, error) {
 				kept = append(kept, id)
 			}
 		}
+		for _, id := range Default().Routing[cap] {
+			if known[id] && !contains(kept, id) {
+				kept = append(kept, id)
+			}
+		}
 		cfg.Routing[cap] = kept
 	}
 	return cfg, nil
@@ -217,4 +222,13 @@ func Enabled(cfg Config, provider string) bool {
 		return false
 	}
 	return p.Enabled
+}
+
+func contains(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }

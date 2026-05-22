@@ -71,7 +71,7 @@ func TestLoadMergesNewDefaultProviders(t *testing.T) {
 	if err := os.MkdirAll(".forage", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(".forage", "config.yaml"), []byte("version: 1\nproviders:\n  brave:\n    enabled: true\n  blogger:\n    enabled: true\nrouting:\n  search.platform:\n    - hackernews\n    - blogger\ncache:\n  database: .forage/state.db\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(".forage", "config.yaml"), []byte("version: 1\nproviders:\n  brave:\n    enabled: true\n  blogger:\n    enabled: true\nrouting:\n  search.platform:\n    - hackernews\n    - blogger\n  search.web:\n    - brave\n    - jina\ncache:\n  database: .forage/state.db\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load()
@@ -91,5 +91,8 @@ func TestLoadMergesNewDefaultProviders(t *testing.T) {
 		if provider == "blogger" {
 			t.Fatal("removed provider should be pruned from older routes")
 		}
+	}
+	if !contains(cfg.Routing["search.web"], "browserbase") {
+		t.Fatal("new default route provider should be appended to older routes")
 	}
 }
