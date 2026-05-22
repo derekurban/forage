@@ -80,8 +80,8 @@ func Default() Config {
 			"google_cse":       {Enabled: false},
 			"firecrawl":        {Enabled: true},
 			"scrapingant":      {Enabled: true},
-			"diffbot":          {Enabled: true},
 			"apify":            {Enabled: true},
+			"browserbase":      {Enabled: true},
 			"openalex":         {Enabled: true},
 			"semantic_scholar": {Enabled: true},
 			"pubmed":           {Enabled: true},
@@ -101,20 +101,17 @@ func Default() Config {
 			"gnews":            {Enabled: true},
 			"mediastack":       {Enabled: true},
 			"worldnews":        {Enabled: true},
-			"wordpress":        {Enabled: true},
-			"wordpress_com":    {Enabled: true},
-			"blogger":          {Enabled: true},
 			"forem":            {Enabled: true},
 			"reddit":           {Enabled: true},
 			"browserless":      {Enabled: true},
 		},
 		Routing: map[string][]string{
-			"search.web":      {"brave", "jina", "tavily", "exa", "serpapi", "serpstack"},
+			"search.web":      {"brave", "jina", "browserbase", "tavily", "exa", "serpapi", "serpstack"},
 			"search.news":     {"gdelt", "brave", "guardian", "currents", "gnews", "newsapi", "mediastack", "worldnews", "serpapi"},
 			"search.scholar":  {"openalex", "semantic_scholar", "crossref", "arxiv", "pubmed", "datacite", "europepmc", "doaj"},
-			"search.platform": {"hackernews", "reddit", "forem", "wordpress", "blogger"},
-			"extract.article": {"jina", "firecrawl", "scrapingant", "diffbot", "apify", "direct"},
-			"fetch.url":       {"jina", "firecrawl", "scrapingant", "direct"},
+			"search.platform": {"hackernews", "reddit", "forem"},
+			"extract.article": {"jina", "browserbase", "firecrawl", "scrapingant", "apify", "direct"},
+			"fetch.url":       {"jina", "browserbase", "firecrawl", "scrapingant", "direct"},
 			"archive.lookup":  {"internet_archive", "commoncrawl", "gdelt"},
 		},
 		Cache: CacheConfig{Database: DBPath(), Mode: "auto", TTLHours: 24},
@@ -194,6 +191,24 @@ func Load() (Config, error) {
 		if _, ok := cfg.Routing[cap]; !ok {
 			cfg.Routing[cap] = route
 		}
+	}
+	known := map[string]bool{}
+	for id := range Default().Providers {
+		known[id] = true
+	}
+	for id := range cfg.Providers {
+		if !known[id] {
+			delete(cfg.Providers, id)
+		}
+	}
+	for cap, route := range cfg.Routing {
+		var kept []string
+		for _, id := range route {
+			if known[id] {
+				kept = append(kept, id)
+			}
+		}
+		cfg.Routing[cap] = kept
 	}
 	return cfg, nil
 }

@@ -39,7 +39,9 @@ forage providers doctor --all --json
 
 `.env` is repo-local, gitignored, and loaded before credential checks. Existing process environment variables win over values from `.env`.
 
-No credentials are needed for Hacker News, GDELT, OpenAlex, Crossref, arXiv, DataCite, Wikidata, Internet Archive, Common Crawl, public WordPress REST, Forem, DOAJ, or Europe PMC.
+No credentials are needed for Hacker News, GDELT, Semantic Scholar public endpoints, Crossref, arXiv, DataCite, Wikidata, Internet Archive, Common Crawl, Forem, DOAJ, or Europe PMC.
+
+Blogger and WordPress API endpoints are intentionally excluded from the v0.1 provider setup. Diffbot and ScraperAPI are also excluded because they do not fit the recurring-free provider policy.
 
 ## Health and Quota
 

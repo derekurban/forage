@@ -29,10 +29,10 @@ func (a HTTPAdapter) ID() string { return a.id }
 
 func DefaultAdapters(client *http.Client, creds credentials.Store) []Adapter {
 	ids := []string{
-		"brave", "jina", "tavily", "exa", "serpapi", "serpstack", "google_cse",
-		"direct", "firecrawl", "scrapingant", "diffbot", "apify",
+		"brave", "jina", "browserbase", "tavily", "exa", "serpapi", "serpstack", "google_cse",
+		"direct", "firecrawl", "scrapingant", "apify",
 		"gdelt", "guardian", "currents", "gnews", "newsapi", "mediastack", "worldnews",
-		"hackernews", "forem", "wordpress", "blogger", "reddit",
+		"hackernews", "forem", "reddit",
 		"openalex", "semantic_scholar", "crossref", "arxiv", "pubmed", "datacite", "europepmc", "doaj",
 		"internet_archive", "commoncrawl",
 	}
@@ -72,6 +72,8 @@ func (a HTTPAdapter) Fetch(ctx context.Context, req capability.FetchRequest) (ca
 		return a.directFetch(ctx, req.URL)
 	case "jina":
 		return a.jinaFetch(ctx, req.URL)
+	case "browserbase":
+		return a.browserbaseFetch(ctx, req.URL)
 	case "firecrawl":
 		return a.firecrawlExtract(ctx, req.URL)
 	case "scrapingant":
@@ -122,6 +124,24 @@ func (a HTTPAdapter) searchWeb(ctx context.Context, req capability.SearchRequest
 		var out []capability.SearchResult
 		for i, r := range raw {
 			out = append(out, result(a.id, i, r.URL, r.Title, r.Content, "web"))
+		}
+		return out, nil
+	case "browserbase":
+		key, _ := a.creds.Get("browserbase", "BROWSERBASE_API_KEY")
+		body := map[string]any{"query": q, "numResults": min(limit(req.Limit), 25)}
+		var raw struct {
+			Results []struct {
+				Title, URL, Author, PublishedDate, Image, Favicon string
+			} `json:"results"`
+		}
+		if err := a.postJSON(ctx, "https://api.browserbase.com/v1/search", map[string]string{"x-bb-api-key": key.Value}, body, &raw); err != nil {
+			return nil, err
+		}
+		var out []capability.SearchResult
+		for i, r := range raw.Results {
+			rr := result(a.id, i, r.URL, r.Title, r.Author, "web")
+			rr.SourceName = r.Author
+			out = append(out, rr)
 		}
 		return out, nil
 	case "tavily":
@@ -359,10 +379,6 @@ func (a HTTPAdapter) searchPlatform(ctx context.Context, req capability.SearchRe
 			out = append(out, result(a.id, i, r.URL, r.Title, r.Description, "article"))
 		}
 		return out, nil
-	case "wordpress":
-		return nil, ProviderError{Code: "site_required", Message: "WordPress search requires a site-specific REST base URL; use web search with --site for now"}
-	case "blogger":
-		return nil, ProviderError{Code: "site_required", Message: "Blogger search requires a blog id or URL; use web search with --site for now"}
 	default:
 		return nil, ProviderError{Code: "unsupported_capability", Message: "platform search unsupported"}
 	}
@@ -372,6 +388,11 @@ func (a HTTPAdapter) searchScholar(ctx context.Context, req capability.SearchReq
 	q := url.QueryEscape(req.Query)
 	switch a.id {
 	case "openalex":
+		key, _ := a.creds.Get("openalex", "OPENALEX_API_KEY")
+		u := "https://api.openalex.org/works?search=" + q + "&per-page=" + fmt.Sprint(limit(req.Limit))
+		if key.Value != "" {
+			u += "&api_key=" + url.QueryEscape(key.Value)
+		}
 		var raw struct {
 			Results []struct {
 				ID, DOI, Title  string
@@ -381,7 +402,7 @@ func (a HTTPAdapter) searchScholar(ctx context.Context, req capability.SearchReq
 				} `json:"primary_location"`
 			} `json:"results"`
 		}
-		if err := a.getJSON(ctx, "https://api.openalex.org/works?search="+q+"&per-page="+fmt.Sprint(limit(req.Limit)), nil, &raw); err != nil {
+		if err := a.getJSON(ctx, u, nil, &raw); err != nil {
 			return nil, err
 		}
 		var out []capability.ScholarWork
@@ -552,6 +573,23 @@ func (a HTTPAdapter) jinaFetch(ctx context.Context, target string) (capability.E
 	return capability.ExtractedDocument{URL: target, RetrievedAt: time.Now().UTC(), Markdown: md, PlainText: stripMarkdown(md), Provider: a.id, ExtractionMethod: "jina_reader", QualityScore: quality(md), ContentHash: hash(md)}, nil
 }
 
+func (a HTTPAdapter) browserbaseFetch(ctx context.Context, target string) (capability.ExtractedDocument, error) {
+	key, _ := a.creds.Get("browserbase", "BROWSERBASE_API_KEY")
+	body := map[string]any{"url": target, "format": "markdown", "allowRedirects": true}
+	var raw struct {
+		StatusCode  int               `json:"statusCode"`
+		Headers     map[string]string `json:"headers"`
+		Content     string            `json:"content"`
+		ContentType string            `json:"contentType"`
+		Encoding    string            `json:"encoding"`
+	}
+	if err := a.postJSON(ctx, "https://api.browserbase.com/v1/fetch", map[string]string{"X-BB-API-Key": key.Value}, body, &raw); err != nil {
+		return capability.ExtractedDocument{}, err
+	}
+	md := raw.Content
+	return capability.ExtractedDocument{URL: target, RetrievedAt: time.Now().UTC(), Markdown: md, PlainText: stripMarkdown(md), Provider: a.id, ExtractionMethod: "browserbase_fetch_markdown", QualityScore: quality(md), ContentHash: hash(md), Raw: map[string]any{"status_code": raw.StatusCode, "content_type": raw.ContentType, "encoding": raw.Encoding, "headers": raw.Headers}}, nil
+}
+
 func (a HTTPAdapter) firecrawlExtract(ctx context.Context, target string) (capability.ExtractedDocument, error) {
 	key, _ := a.creds.Get("firecrawl", "FIRECRAWL_API_KEY")
 	body := map[string]any{"url": target, "formats": []string{"markdown", "html"}}
@@ -661,6 +699,12 @@ func limit(n int) int {
 		return 100
 	}
 	return n
+}
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 func domain(u string) string {
 	parsed, err := url.Parse(u)

@@ -54,6 +54,8 @@ forage providers doctor --all --json
 
 Existing process environment variables take precedence over `.env`. The `.env` file is gitignored and should never be committed.
 
+The template contains only credential fields Forage should validate or keep ready for the recurring-free provider set. Blogger, WordPress API endpoints, Diffbot, and ScraperAPI are intentionally excluded; Semantic Scholar uses public no-key endpoints in v0.1.
+
 ## Common Commands
 
 ```powershell

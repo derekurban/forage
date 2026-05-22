@@ -18,7 +18,7 @@ A robust research stack usually needs:
 1. **Discovery** — search APIs, SERPs, news indexes, scholarly indexes.
 2. **Fetch/extraction** — URL-to-markdown/text, JS rendering, article extraction, PDF handling.
 3. **Corpus APIs** — OpenAlex, PubMed, Crossref, Semantic Scholar, GDELT, Common Crawl, Internet Archive, etc.
-4. **Source-specific APIs** — WordPress, Blogger, Forem/DEV, Hacker News, Guardian, Reddit, etc.
+4. **Source-specific APIs** — Forem/DEV, Hacker News, Guardian, Reddit, archive/corpus APIs, etc.
 5. **Compliance/cache layer** — canonical URL, date seen, source license/terms, extraction method, robots/ToS flags, deduplication, provenance.
 
 ---
@@ -43,9 +43,9 @@ A robust research stack usually needs:
 |---|---|---|---|---|---|---|
 | **Jina Reader (`r.jina.ai`)** | [jina.ai/reader](https://jina.ai/reader/) | URL-to-markdown/text extraction | Free rate-limited usage: **20 RPM without key**, **500 RPM with free API key** | Converts URLs to LLM-friendly markdown; supports web pages, PDFs, images, selectors, cache controls, and search endpoint | Great first-pass extraction layer for blogs/articles/docs. Free but rate-limited; use responsibly. | Premium Reader rate limit listed as **5,000 RPM** |
 | **Firecrawl** | [firecrawl.dev/pricing](https://www.firecrawl.dev/pricing) | Scrape, crawl, map, search, extract | **1,000 credits/month free**; no credit card required | Scraping, crawling, URL mapping, search, extraction, LLM-ready markdown | Free plan: about **1,000 pages/month**, **2 concurrent requests**, low rate limits. Endpoint credits vary: Scrape/Crawl/Map ≈ 1/page; Search ≈ 2/10 results | Paid plans scale credits/concurrency; endpoint credit table published |
+| **Browserbase Search/Fetch** | [docs.browserbase.com](https://docs.browserbase.com/) | Agent web search and page fetch/extract | Free search/fetch access behind one Browserbase API key, with documented endpoint limits | Web search and URL fetch/extract into raw, markdown, or structured JSON output | Search API is rate-limited; Fetch does not execute JavaScript and has size/timeout limits | Browser sessions and higher-scale usage are separate Browserbase platform features |
 | **ScrapingAnt** | [scrapingant.com](https://scrapingant.com/) | Scraping API, browser rendering, proxies, extraction | **10,000 free credits every month**; no credit card required | JS-rendered scraping, rotating proxies, markdown/text extraction, MCP tooling | Default Chrome-rendered request with standard proxies costs **10 credits**; requests can cost **1–25 credits** depending options | Paid plans are credit-based |
 | **Apify** | [apify.com/pricing](https://apify.com/pricing) | Scraping/crawling platform, actor marketplace, proxies | **$5/month free platform usage**; no credit card required | Actor marketplace, custom crawlers, proxy options, scheduled jobs, datasets, MCP/agent tooling | Free plan includes limited platform spend and concurrency; overages blocked until next billing cycle | Compute unit listed at **$0.20/CU**; free includes **$5 prepaid usage/month** |
-| **Diffbot** | [diffbot.com/pricing](https://www.diffbot.com/pricing/) | Article extraction, crawl, natural language, knowledge graph | **10,000 credits/month free forever**; **5 calls/min** | Automatic article/product/page extraction, Crawl, Bulk Extract, Natural Language, Knowledge Graph Search/Enhance | One page extraction is typically **1 credit**; exporting one Knowledge Graph entity record is **25 credits** | Free monthly allotment resets each billing period |
 | **Browserless** | [browserless.io/pricing](https://www.browserless.io/pricing/) | Hosted browser automation / Chrome API | **1,000 units/month free**; no credit card required | Remote browsers for Puppeteer/Playwright-style automation, screenshots, JS-rendered sites, captchas/proxies/features | Free plan: **2 concurrent browsers**, **1-minute max session**, logs/sessions kept 1 day. One unit = 30 seconds browser time. | Proxy/captcha features consume additional units; paid plans scale units/concurrency |
 
 ---
@@ -61,9 +61,6 @@ A robust research stack usually needs:
 | **World News API** | [worldnewsapi.com/pricing](https://worldnewsapi.com/pricing) | News API | **50 points/day free** | News search, article metadata, 1-month history | Free plan requires backlink; **1 request/s**, **1 concurrent request** | Paid plans increase points/history/concurrency |
 | **The Guardian Open Platform** | [open-platform.theguardian.com/access](https://open-platform.theguardian.com/access/) | Publisher API | **500 calls/day**, **1 call/s**, non-commercial developer key | Guardian article metadata and article text | Free key is non-commercial. Commercial use, AI/model training, and text mining require a commercial key/custom terms. | Commercial terms are custom |
 | **GDELT Project** | [gdeltproject.org](https://www.gdeltproject.org/) | Open global news/media/event corpus | Free/open access; updates every **15 minutes** | Global print, broadcast, and web news monitoring in 100+ languages; historical archive back to 1979 for event datasets | Better as a media-intelligence and news-discovery corpus than a clean full-text news API | Free/open data; BigQuery access also available |
-| **WordPress REST API** | [developer.wordpress.org/rest-api](https://developer.wordpress.org/rest-api/) | Blog/CMS source API | Free public access where enabled by each WordPress site | Posts, pages, taxonomies, media, search, comments, etc. | Public content is generally publicly accessible through the REST API; private/protected content requires auth. Site owners/plugins/hosts may limit or disable access. | No platform pricing; per-site infrastructure/rate limits apply |
-| **WordPress.com REST API** | [developer.wordpress.com/docs/api](https://developer.wordpress.com/docs/api/) | WordPress.com / Jetpack source API | Free access to public endpoints; authenticated endpoints require OAuth | WordPress.com and Jetpack-connected site data: posts, comments, taxonomy, media, users, stats, etc. | Subject to Automattic API terms and responsible-use/rate limiting guidelines | No simple fixed free quota surfaced |
-| **Blogger API v3** | [developers.google.com/blogger/docs/3.0/using](https://developers.google.com/blogger/docs/3.0/using) | Blog platform API | Free public blog retrieval with API key | Public Blogger/Blogspot blogs, posts, pages, comments, search | Public blog requests require API key but not user auth; private blogs require auth. Google Cloud quotas may apply. | Google API quotas apply; no simple paid public pricing surfaced |
 | **Forem / DEV API** | [developers.forem.com/api/v1](https://developers.forem.com/api/v1) | Developer/blog/community articles | Free public API access | DEV/Forem published articles, latest articles, user/org articles, tags, comments | Exact public quota was not clearly surfaced; API-key auth required for user-specific endpoints | No simple paid public pricing surfaced |
 | **Hacker News API** | [github.com/HackerNews/API](https://github.com/HackerNews/API) | Tech article/discussion discovery API | Free public API; official docs state **currently no rate limit** | Near-real-time HN stories, comments, jobs, Ask HN, Show HN, poll items, external URLs | API is intentionally simple/awkward; client should handle trees and extra fields gracefully | Free public API |
 | **Reddit Data API** | [Reddit Data API Wiki](https://support.reddithelp.com/hc/en-us/articles/16160319875092-Reddit-Data-API-Wiki) | Discussion/social/news aggregation API | Free access usage for eligible apps: **100 QPM per OAuth client ID** | Reddit posts/comments/subreddit data and discussion around articles/blogs | OAuth required; user-agent required; deleted content/data retention obligations; commercial/research eligibility and terms matter | Commercial/large-scale access may require separate terms |
@@ -137,13 +134,13 @@ A practical free-tier-first architecture could look like this:
 - **General web:** Exa, Tavily, Brave Search API, SerpApi, serpstack, Jina Search.
 - **News:** Currents, GNews, NewsAPI, GDELT, Guardian, Brave News, SerpApi Google News.
 - **Scholarly:** OpenAlex, Semantic Scholar, Crossref, arXiv, PubMed/NCBI, DataCite, OpenCitations, ORCID.
-- **Blogs/platforms:** WordPress REST, Blogger, Forem/DEV, HN API, Reddit API.
+- **Blogs/platforms:** Forem/DEV, HN API, Reddit API.
 
 ## Extraction
 
 - **First pass:** Jina Reader.
+- **If hosted extraction needed:** Browserbase Fetch, Firecrawl, ScrapingAnt.
 - **If JS/rendering needed:** ScrapingAnt, Firecrawl, Browserless.
-- **If structured extraction needed:** Diffbot.
 - **If marketplace crawler needed:** Apify.
 
 ## Corpora / offline intelligence
@@ -184,15 +181,15 @@ If you want the highest immediate leverage without paying, start with:
 
 | Layer | Providers |
 |---|---|
-| Web search | Exa + Tavily + Brave Search + SerpApi + serpstack |
+| Web search | Exa + Tavily + Brave Search + Browserbase + SerpApi + serpstack |
 | News discovery | Currents + GNews + NewsAPI + GDELT + Guardian |
-| Article/blog extraction | Jina Reader + Firecrawl + ScrapingAnt |
+| Article/blog extraction | Jina Reader + Browserbase Fetch + Firecrawl + ScrapingAnt |
 | Hard pages / JS rendering | Browserless + ScrapingAnt + Apify |
 | Scholarly discovery | OpenAlex + Semantic Scholar + Crossref + PubMed/NCBI + arXiv |
 | Citation graph | OpenCitations + Crossref + Semantic Scholar + OpenAlex |
 | Historical web/news | Internet Archive + Common Crawl + GDELT |
 | Entity graph | Wikidata + ORCID + OpenAlex |
-| Platform-specific blogs/discussions | WordPress REST + Blogger + Forem/DEV + Hacker News + Reddit |
+| Platform-specific blogs/discussions | Forem/DEV + Hacker News + Reddit |
 
 ---
 
@@ -207,9 +204,9 @@ The provider list above should be treated as implementation inventory, not as th
 | `search.web` | Broad web discovery for a query | Exa, Tavily, Brave, SerpApi, serpstack, Jina Search | Ranked `SearchResult[]` |
 | `search.news` | Recent or historical news discovery | GDELT, Currents, GNews, NewsAPI, Guardian, Brave News | Ranked `SearchResult[]` with freshness metadata |
 | `search.scholar` | Academic paper and citation discovery | OpenAlex, Semantic Scholar, Crossref, PubMed, arXiv | `WorkResult[]` |
-| `search.platform` | Source-specific discovery | WordPress, Blogger, Forem, HN, Reddit | `PlatformResult[]` |
-| `fetch.url` | Fetch raw URL content without heavy extraction | Native HTTP, Jina Reader, Firecrawl, ScrapingAnt | `FetchedDocument` |
-| `extract.article` | Convert a URL or HTML page to readable text/markdown | Jina Reader, Firecrawl, Diffbot, trafilatura, Readability.js | `ExtractedDocument` |
+| `search.platform` | Source-specific discovery | Forem, HN, Reddit | `PlatformResult[]` |
+| `fetch.url` | Fetch raw URL content without heavy extraction | Native HTTP, Jina Reader, Browserbase, Firecrawl, ScrapingAnt | `FetchedDocument` |
+| `extract.article` | Convert a URL or HTML page to readable text/markdown | Jina Reader, Browserbase, Firecrawl, trafilatura, Readability.js | `ExtractedDocument` |
 | `render.browser` | Load JS-heavy pages, screenshots, DOM snapshots | Browserless, ScrapingAnt, Playwright, Apify | `RenderedPage` |
 | `crawl.site` | Traverse many URLs from one site | Firecrawl, Apify, Scrapy, Crawlee, Crawl4AI | `CrawlResult[]` |
 | `resolve.identity` | Normalize entities, authors, orgs, papers, DOIs | Wikidata, ORCID, OpenAlex, Crossref, DataCite | `EntityRecord` |
@@ -347,7 +344,7 @@ The router should implement intent-aware fanout and fallback rather than a fixed
 | PDF | Jina Reader if supported | Direct download + local PDF text extraction |
 | JS-heavy page | Browserless or ScrapingAnt | Playwright local, then Apify actor |
 | Anti-bot or blocked page | Firecrawl/ScrapingAnt | Browserless with conservative settings |
-| Structured article/product/entity extraction | Diffbot | Firecrawl extract, then local parser |
+| Structured article/product/entity extraction | Browserbase Fetch Extract or Firecrawl extract | Local parser |
 | Multi-page site exploration | Firecrawl map/crawl | Apify actor, Crawlee/Scrapy self-hosted |
 
 ## Fallback triggers
@@ -537,10 +534,10 @@ Recommended precedence:
 
 | Setup group | Providers | Why |
 |---|---|---|
-| `no-key` | HN, GDELT, Crossref, arXiv, Wikidata, Common Crawl, Internet Archive, public WordPress REST where available | Lets the CLI work immediately. |
-| `easy-key` | Brave, Jina, OpenAlex if needed, NCBI, SerpApi, Tavily, Exa, Currents, GNews | API key only; good first guided setup. |
-| `oauth` | Reddit, WordPress.com, ORCID public credentials where needed | Requires more setup and clearer docs. |
-| `browser` | Browserless, ScrapingAnt, Apify, local Playwright | Needed for hard pages and rendering. |
+| `no-key` | HN, GDELT, Semantic Scholar public endpoints, Crossref, arXiv, Wikidata, Common Crawl, Internet Archive | Lets the CLI work immediately. |
+| `easy-key` | Brave, Jina, Browserbase, OpenAlex, NCBI, SerpApi, Tavily, Exa, Currents, GNews | API key only; good first guided setup. |
+| `oauth` | Reddit, ORCID public credentials where needed | Requires more setup and clearer docs. |
+| `browser` | Browserless, Browserbase, ScrapingAnt, Apify, local Playwright | Needed for hard pages and rendering. |
 | `local` | Readability.js, trafilatura, Playwright, Scrapy/Crawlee/Crawl4AI | Reduces external spend; needs runtime dependencies. |
 
 ## `providers doctor`
@@ -614,7 +611,7 @@ A deep research agent should not treat search results as evidence. It should mov
 ## Phase 1: Useful local CLI
 
 - Build `forage config init`, `providers list`, `providers doctor`, and a local SQLite cache.
-- Implement no-key providers first: HN, GDELT, Crossref, arXiv, Wikidata, Internet Archive metadata, public WordPress REST probing.
+- Implement no-key providers first: HN, GDELT, Semantic Scholar public endpoints, Crossref, arXiv, Wikidata, Internet Archive metadata.
 - Implement local fetch plus local extraction using a simple HTTP client and a local readability/trafilatura path.
 - Add normalized `SearchResult`, `ExtractedDocument`, and `ProviderStatus` types.
 

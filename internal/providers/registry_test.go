@@ -12,7 +12,7 @@ func TestRegistryContainsRecurringFreeProductionSet(t *testing.T) {
 	if len(ps) < 12 {
 		t.Fatalf("Registry() returned %d providers", len(ps))
 	}
-	for _, id := range []string{"brave", "jina", "tavily", "exa", "hackernews", "crossref", "arxiv"} {
+	for _, id := range []string{"brave", "jina", "browserbase", "tavily", "exa", "hackernews", "crossref", "arxiv"} {
 		p, ok := ByID(id)
 		if !ok {
 			t.Fatalf("missing provider %s", id)
@@ -50,6 +50,27 @@ func TestRegistryCredentialFieldsAndLegacyOptional(t *testing.T) {
 	}
 	if len(reddit.CredentialFields) < 3 {
 		t.Fatalf("reddit credential fields = %+v", reddit.CredentialFields)
+	}
+}
+
+func TestRemovedProvidersAreNotRegistered(t *testing.T) {
+	for _, id := range []string{"blogger", "wordpress", "wordpress_com", "diffbot", "scraperapi"} {
+		if _, ok := ByID(id); ok {
+			t.Fatalf("%s should not be registered", id)
+		}
+	}
+}
+
+func TestSemanticScholarUsesNoKeyPublicEndpoints(t *testing.T) {
+	p, ok := ByID("semantic_scholar")
+	if !ok {
+		t.Fatal("missing semantic_scholar")
+	}
+	if p.AuthType != AuthNone {
+		t.Fatalf("semantic_scholar auth = %s", p.AuthType)
+	}
+	if len(p.CredentialFields) != 0 {
+		t.Fatalf("semantic_scholar should not require credentials: %+v", p.CredentialFields)
 	}
 }
 

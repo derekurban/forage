@@ -51,8 +51,21 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if !Enabled(cfg, "direct") {
 		t.Fatal("direct should be enabled by default")
 	}
+	if !Enabled(cfg, "browserbase") {
+		t.Fatal("browserbase should be enabled by default")
+	}
 	if Enabled(cfg, "google_cse") {
 		t.Fatal("google_cse should be legacy optional and disabled by default")
+	}
+	for _, removed := range []string{"blogger", "wordpress", "wordpress_com", "diffbot"} {
+		if Enabled(cfg, removed) {
+			t.Fatalf("%s should not be enabled by default", removed)
+		}
+	}
+	for _, provider := range cfg.Routing["search.platform"] {
+		if provider == "blogger" || provider == "wordpress" || provider == "wordpress_com" {
+			t.Fatalf("removed provider %s found in platform route", provider)
+		}
 	}
 }
 
@@ -61,7 +74,7 @@ func TestLoadMergesNewDefaultProviders(t *testing.T) {
 	if err := os.MkdirAll(".forage", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(".forage", "config.yaml"), []byte("version: 1\nproviders:\n  brave:\n    enabled: true\nrouting: {}\ncache:\n  database: .forage/state.db\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(".forage", "config.yaml"), []byte("version: 1\nproviders:\n  brave:\n    enabled: true\n  blogger:\n    enabled: true\nrouting:\n  search.platform:\n    - hackernews\n    - blogger\ncache:\n  database: .forage/state.db\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load()
@@ -73,5 +86,13 @@ func TestLoadMergesNewDefaultProviders(t *testing.T) {
 	}
 	if len(cfg.Routing["fetch.url"]) == 0 {
 		t.Fatal("default fetch route should be merged")
+	}
+	if Enabled(cfg, "blogger") {
+		t.Fatal("removed provider should be pruned from older configs")
+	}
+	for _, provider := range cfg.Routing["search.platform"] {
+		if provider == "blogger" {
+			t.Fatal("removed provider should be pruned from older routes")
+		}
 	}
 }
