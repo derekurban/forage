@@ -32,6 +32,7 @@ type Provider struct {
 	Status           ImplementationStatus `json:"implementation_status"`
 	SetupGroup       string               `json:"setup_group,omitempty"`
 	CredentialFields []CredentialField    `json:"credential_fields,omitempty"`
+	Quota            QuotaTracking        `json:"quota"`
 }
 
 type CredentialField struct {
@@ -40,6 +41,18 @@ type CredentialField struct {
 	Secret      bool   `json:"secret"`
 	Required    bool   `json:"required"`
 	Description string `json:"description,omitempty"`
+}
+
+type QuotaTracking struct {
+	Mode          string   `json:"mode"`
+	Headers       []string `json:"headers,omitempty"`
+	Endpoint      string   `json:"endpoint,omitempty"`
+	ManualLimit   string   `json:"manual_limit,omitempty"`
+	Notes         string   `json:"notes,omitempty"`
+	Source        string   `json:"source,omitempty"`
+	CanPreflight  bool     `json:"can_preflight,omitempty"`
+	CanObserve    bool     `json:"can_observe"`
+	CanInferUsage bool     `json:"can_infer_usage"`
 }
 
 func Registry() []Provider {
@@ -52,8 +65,8 @@ func Registry() []Provider {
 		{ID: "hackernews", Name: "Hacker News API", Category: "platform", Capabilities: []string{"search.platform"}, AuthType: AuthNone, SetupURL: "https://github.com/HackerNews/API", FreeTier: "Free public API", LimitModel: "no documented current rate limit", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "crossref", Name: "Crossref REST API", Category: "scholarly", Capabilities: []string{"search.scholar", "enrich.citations"}, AuthType: AuthNone, SetupURL: "https://www.crossref.org/documentation/retrieve-metadata/rest-api/", FreeTier: "Free public REST API", LimitModel: "headers expose current limits; polite pool with mailto", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "arxiv", Name: "arXiv API", Category: "scholarly", Capabilities: []string{"search.scholar"}, AuthType: AuthNone, SetupURL: "https://info.arxiv.org/help/api/index.html", FreeTier: "Free public API", LimitModel: "3 second delay between requests", LimitConfidence: "documented", Status: CapabilitySupported},
-		{ID: "serpapi", Name: "SerpApi", Category: "SERP", Capabilities: []string{"search.web", "search.news", "search.scholar"}, AuthType: AuthAPIKey, EnvVar: "SERPAPI_API_KEY", SetupURL: "https://serpapi.com/", FreeTier: "250 searches/month", LimitModel: "monthly searches + hourly throughput", LimitConfidence: "documented", Status: MetadataOnly},
-		{ID: "serpstack", Name: "serpstack", Category: "SERP", Capabilities: []string{"search.web"}, AuthType: AuthAPIKey, EnvVar: "SERPSTACK_API_KEY", SetupURL: "https://serpstack.com/", FreeTier: "100 searches/month", LimitModel: "monthly searches", LimitConfidence: "documented", Status: MetadataOnly},
+		{ID: "serpapi", Name: "SerpApi", Category: "SERP", Capabilities: []string{"search.web", "search.news", "search.scholar"}, AuthType: AuthAPIKey, EnvVar: "SERPAPI_API_KEY", SetupURL: "https://serpapi.com/", FreeTier: "250 searches/month", LimitModel: "monthly searches + hourly throughput", LimitConfidence: "documented", Status: CapabilitySupported},
+		{ID: "serpstack", Name: "serpstack", Category: "SERP", Capabilities: []string{"search.web"}, AuthType: AuthAPIKey, EnvVar: "SERPSTACK_API_KEY", SetupURL: "https://serpstack.com/", FreeTier: "100 searches/month", LimitModel: "monthly searches", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "firecrawl", Name: "Firecrawl", Category: "extraction/crawl", Capabilities: []string{"fetch.url", "extract.article", "crawl.site"}, AuthType: AuthAPIKey, EnvVar: "FIRECRAWL_API_KEY", SetupURL: "https://www.firecrawl.dev/", FreeTier: "1,000 credits/month", LimitModel: "monthly credits + concurrency", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "scrapingant", Name: "ScrapingAnt", Category: "render/scrape", Capabilities: []string{"fetch.url", "extract.article", "render.browser"}, AuthType: AuthAPIKey, EnvVar: "SCRAPINGANT_API_KEY", SetupURL: "https://scrapingant.com/", FreeTier: "10,000 credits/month", LimitModel: "monthly credits per request option", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "apify", Name: "Apify", Category: "scraping/crawl", Capabilities: []string{"extract.article", "crawl.site", "render.browser"}, AuthType: AuthAPIKey, EnvVar: "APIFY_API_KEY", SetupURL: "https://apify.com/", FreeTier: "$5/month platform usage", LimitModel: "compute units", LimitConfidence: "documented", Status: MetadataOnly},
@@ -73,11 +86,11 @@ func Registry() []Provider {
 		{ID: "internet_archive", Name: "Internet Archive", Category: "archive", Capabilities: []string{"archive.lookup"}, AuthType: AuthNone, SetupURL: "https://archive.org/developers", FreeTier: "Free public APIs", LimitModel: "fair use", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "commoncrawl", Name: "Common Crawl", Category: "corpus", Capabilities: []string{"archive.lookup"}, AuthType: AuthNone, SetupURL: "https://commoncrawl.org/", FreeTier: "Free corpus", LimitModel: "public dataset/compute costs", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "guardian", Name: "The Guardian Open Platform", Category: "news", Capabilities: []string{"search.news"}, AuthType: AuthAPIKey, EnvVar: "GUARDIAN_API_KEY", SetupURL: "https://open-platform.theguardian.com/", FreeTier: "500 calls/day non-commercial", LimitModel: "daily + 1 call/s", LimitConfidence: "documented", Status: CapabilitySupported},
-		{ID: "currents", Name: "Currents API", Category: "news", Capabilities: []string{"search.news"}, AuthType: AuthAPIKey, EnvVar: "CURRENTS_API_KEY", SetupURL: "https://currentsapi.services/", FreeTier: "1,000 requests/day", LimitModel: "daily requests", LimitConfidence: "documented", Status: MetadataOnly},
+		{ID: "currents", Name: "Currents API", Category: "news", Capabilities: []string{"search.news"}, AuthType: AuthAPIKey, EnvVar: "CURRENTS_API_KEY", SetupURL: "https://currentsapi.services/", FreeTier: "1,000 requests/day", LimitModel: "daily requests", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "newsapi", Name: "NewsAPI.org", Category: "news", Capabilities: []string{"search.news"}, AuthType: AuthAPIKey, EnvVar: "NEWSAPI_API_KEY", SetupURL: "https://newsapi.org/", FreeTier: "100 requests/day", LimitModel: "daily requests + delayed data", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "gnews", Name: "GNews API", Category: "news", Capabilities: []string{"search.news"}, AuthType: AuthAPIKey, EnvVar: "GNEWS_API_KEY", SetupURL: "https://gnews.io/", FreeTier: "100 requests/day", LimitModel: "daily requests + delay", LimitConfidence: "documented", Status: CapabilitySupported},
-		{ID: "mediastack", Name: "Mediastack", Category: "news", Capabilities: []string{"search.news"}, AuthType: AuthAPIKey, EnvVar: "MEDIASTACK_API_KEY", SetupURL: "https://mediastack.com/", FreeTier: "100 calls/month", LimitModel: "monthly calls", LimitConfidence: "documented", Status: MetadataOnly},
-		{ID: "worldnews", Name: "World News API", Category: "news", Capabilities: []string{"search.news"}, AuthType: AuthAPIKey, EnvVar: "WORLDNEWS_API_KEY", SetupURL: "https://worldnewsapi.com/", FreeTier: "50 points/day", LimitModel: "daily points", LimitConfidence: "documented", Status: MetadataOnly},
+		{ID: "mediastack", Name: "Mediastack", Category: "news", Capabilities: []string{"search.news"}, AuthType: AuthAPIKey, EnvVar: "MEDIASTACK_API_KEY", SetupURL: "https://mediastack.com/", FreeTier: "100 calls/month", LimitModel: "monthly calls", LimitConfidence: "documented", Status: CapabilitySupported},
+		{ID: "worldnews", Name: "World News API", Category: "news", Capabilities: []string{"search.news"}, AuthType: AuthAPIKey, EnvVar: "WORLDNEWS_API_KEY", SetupURL: "https://worldnewsapi.com/", FreeTier: "50 points/day", LimitModel: "daily points", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "forem", Name: "Forem / DEV API", Category: "platform", Capabilities: []string{"search.platform"}, AuthType: AuthNone, SetupURL: "https://developers.forem.com/api/v1", FreeTier: "Free public API", LimitModel: "unknown", LimitConfidence: "unknown", Status: CapabilitySupported},
 	})
 }
@@ -91,8 +104,47 @@ func withDerivedMetadata(ps []Provider) []Provider {
 		if len(p.CredentialFields) == 0 {
 			p.CredentialFields = credentialFields(*p)
 		}
+		if p.Quota.Mode == "" {
+			p.Quota = quotaTracking(*p)
+		}
 	}
 	return ps
+}
+
+func quotaTracking(p Provider) QuotaTracking {
+	commonHeaders := []string{"Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset"}
+	switch p.ID {
+	case "brave":
+		return QuotaTracking{Mode: "headers", Headers: []string{"X-RateLimit-Limit", "X-RateLimit-Policy", "X-RateLimit-Remaining", "X-RateLimit-Reset"}, ManualLimit: "free credits monthly; plan-dependent QPS/monthly windows", CanObserve: true, CanInferUsage: true, Source: "https://api-dashboard.search.brave.com/documentation/guides/rate-limiting"}
+	case "browserbase":
+		return QuotaTracking{Mode: "headers", Headers: []string{"RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset"}, ManualLimit: "plan-dependent search/fetch credits and request windows", CanObserve: true, CanInferUsage: true, Source: "https://docs.browserbase.com/guides/concurrency-rate-limits"}
+	case "openalex":
+		return QuotaTracking{Mode: "headers_and_endpoint", Headers: []string{"X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Credits-Used", "X-RateLimit-Reset"}, Endpoint: "https://api.openalex.org/rate-limit", ManualLimit: "free API key: 100,000 credits/day; max 100 rps", CanPreflight: true, CanObserve: true, CanInferUsage: true, Source: "https://docs.openalex.org/how-to-use-the-api/rate-limits-and-authentication"}
+	case "worldnews":
+		return QuotaTracking{Mode: "headers", Headers: commonHeaders, ManualLimit: "daily points; endpoint-specific point costs", CanObserve: true, CanInferUsage: true, Source: "https://worldnewsapi.com/docs/quotas-and-rate-limiting/"}
+	case "exa":
+		return QuotaTracking{Mode: "manual", ManualLimit: "default /search 5 QPS, /contents 50 QPS, /answer 5 QPS", CanObserve: false, CanInferUsage: true, Source: "https://docs.exa.ai/reference/rate-limits"}
+	case "tavily":
+		return QuotaTracking{Mode: "manual", ManualLimit: "credit-based monthly account quota; 429 on exhaustion", CanObserve: false, CanInferUsage: true, Source: "https://docs.tavily.com/docs/tavily-api/introduction"}
+	case "firecrawl":
+		return QuotaTracking{Mode: "manual_and_429", Headers: commonHeaders, ManualLimit: "monthly credits plus concurrency; 429 on rate limit", CanObserve: true, CanInferUsage: true, Source: "https://docs.firecrawl.dev/api-reference/introduction"}
+	case "serpstack":
+		return QuotaTracking{Mode: "body_error", ManualLimit: "monthly request allowance; error type usage_limit_reached", CanObserve: false, CanInferUsage: true, Source: "https://serpstack.com/documentation"}
+	case "semantic_scholar":
+		return QuotaTracking{Mode: "manual_and_429", ManualLimit: "public endpoints share unauthenticated limit; API-key introductory limit is 1 rps", CanObserve: false, CanInferUsage: true, Source: "https://www.semanticscholar.org/product/api"}
+	case "pubmed":
+		return QuotaTracking{Mode: "headers", Headers: []string{"X-RateLimit-Limit", "X-RateLimit-Remaining"}, ManualLimit: "3 rps without key, 10 rps with key", CanObserve: true, CanInferUsage: true, Source: "https://www.ncbi.nlm.nih.gov/books/NBK25497/"}
+	case "crossref":
+		return QuotaTracking{Mode: "headers", Headers: commonHeaders, ManualLimit: "polite pool and fair-use limits; headers may expose current windows", CanObserve: true, CanInferUsage: true, Source: "https://www.crossref.org/documentation/retrieve-metadata/rest-api/"}
+	case "arxiv":
+		return QuotaTracking{Mode: "manual", ManualLimit: "wait at least 3 seconds between API requests", CanObserve: false, CanInferUsage: true, Source: "https://info.arxiv.org/help/api/index.html"}
+	case "hackernews", "forem", "datacite", "doaj", "europepmc", "internet_archive", "commoncrawl", "direct":
+		return QuotaTracking{Mode: "fair_use", ManualLimit: p.LimitModel, CanObserve: false, CanInferUsage: true, Source: p.SetupURL}
+	case "gdelt":
+		return QuotaTracking{Mode: "fair_use_unreliable", ManualLimit: "free/open endpoint; timeout-prone from current Windows environment", CanObserve: false, CanInferUsage: true, Source: p.SetupURL}
+	default:
+		return QuotaTracking{Mode: "manual", Headers: commonHeaders, ManualLimit: p.LimitModel, CanObserve: false, CanInferUsage: true, Source: p.SetupURL}
+	}
 }
 
 func setupGroup(p Provider) string {

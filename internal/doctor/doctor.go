@@ -234,6 +234,22 @@ func observeHeaders(resp *http.Response, ps *state.ProviderState) {
 			break
 		}
 	}
+	for _, h := range []string{"x-ratelimit-limit", "ratelimit-limit", "x-rate-limit-limit"} {
+		if v := resp.Header.Get(h); v != "" {
+			if n, err := strconv.ParseInt(firstHeaderValue(v), 10, 64); err == nil {
+				ps.Limit = &n
+			}
+			break
+		}
+	}
+	for _, h := range []string{"x-ratelimit-used", "ratelimit-used", "x-ratelimit-credits-used"} {
+		if v := resp.Header.Get(h); v != "" {
+			if n, err := strconv.ParseInt(firstHeaderValue(v), 10, 64); err == nil {
+				ps.Used = &n
+			}
+			break
+		}
+	}
 	if v := resp.Header.Get("retry-after"); v != "" {
 		ps.RetryAfter = v
 	}

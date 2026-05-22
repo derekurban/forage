@@ -490,6 +490,28 @@ func (a HTTPAdapter) searchScholar(ctx context.Context, req capability.SearchReq
 			out = append(out, capability.ScholarWork{ID: id, Title: r.Title, URL: "https://pubmed.ncbi.nlm.nih.gov/" + id + "/", Provider: a.id})
 		}
 		return out, nil
+	case "semantic_scholar":
+		var raw struct {
+			Data []struct {
+				PaperID     string `json:"paperId"`
+				Title       string
+				Abstract    string
+				URL         string
+				Year        int
+				ExternalIDs struct {
+					DOI string
+				} `json:"externalIds"`
+			} `json:"data"`
+		}
+		u := "https://api.semanticscholar.org/graph/v1/paper/search?query=" + q + "&limit=" + fmt.Sprint(limit(req.Limit)) + "&fields=title,abstract,url,year,externalIds"
+		if err := a.getJSON(ctx, u, nil, &raw); err != nil {
+			return nil, err
+		}
+		var out []capability.ScholarWork
+		for _, r := range raw.Data {
+			out = append(out, capability.ScholarWork{ID: r.PaperID, DOI: r.ExternalIDs.DOI, Title: r.Title, Abstract: r.Abstract, URL: r.URL, Year: r.Year, Provider: a.id})
+		}
+		return out, nil
 	case "datacite":
 		var raw struct {
 			Data []struct {
@@ -800,7 +822,7 @@ func firstHeader(resp *http.Response, names ...string) string {
 
 func observedQuotaHeaders(resp *http.Response) string {
 	var parts []string
-	for _, h := range []string{"x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset", "ratelimit-limit", "ratelimit-remaining", "ratelimit-reset", "retry-after"} {
+	for _, h := range []string{"x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset", "x-ratelimit-used", "x-ratelimit-credits-used", "ratelimit-limit", "ratelimit-remaining", "ratelimit-reset", "ratelimit-used", "retry-after"} {
 		if v := resp.Header.Get(h); v != "" {
 			parts = append(parts, h+"="+v)
 		}

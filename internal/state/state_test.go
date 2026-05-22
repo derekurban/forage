@@ -13,12 +13,16 @@ func TestProviderStateRoundTrip(t *testing.T) {
 	}
 	defer st.Close()
 	remaining := int64(42)
+	limit := int64(100)
+	used := int64(58)
 	httpStatus := 429
 	err = st.UpsertProviderState(ProviderState{
 		Provider:       "brave",
 		Status:         "cooldown",
 		Reason:         "rate_limited",
+		Limit:          &limit,
 		Remaining:      &remaining,
+		Used:           &used,
 		RetryAfter:     "60",
 		LastHTTPStatus: &httpStatus,
 		Observed:       "retry-after=60",
@@ -39,6 +43,12 @@ func TestProviderStateRoundTrip(t *testing.T) {
 	}
 	if got.Remaining == nil || *got.Remaining != 42 {
 		t.Fatalf("remaining = %+v", got.Remaining)
+	}
+	if got.Limit == nil || *got.Limit != 100 {
+		t.Fatalf("limit = %+v", got.Limit)
+	}
+	if got.Used == nil || *got.Used != 58 {
+		t.Fatalf("used = %+v", got.Used)
 	}
 	if got.LastHTTPStatus == nil || *got.LastHTTPStatus != 429 {
 		t.Fatalf("status = %+v", got.LastHTTPStatus)

@@ -325,6 +325,12 @@ func (a *app) providersQuotaCmd() *cobra.Command {
 				remaining := ""
 				if ps.Remaining != nil {
 					remaining = fmt.Sprintf("%d", *ps.Remaining)
+					if ps.Limit != nil {
+						remaining = fmt.Sprintf("%d/%d", *ps.Remaining, *ps.Limit)
+					}
+					if ps.Used != nil {
+						remaining += fmt.Sprintf(" used:%d", *ps.Used)
+					}
 				}
 				retry := ps.RetryAfter
 				if retry == "" {

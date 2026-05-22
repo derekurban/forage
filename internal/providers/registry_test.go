@@ -75,6 +75,24 @@ func TestSemanticScholarUsesNoKeyPublicEndpoints(t *testing.T) {
 	if len(p.CredentialFields) != 0 {
 		t.Fatalf("semantic_scholar should not require credentials: %+v", p.CredentialFields)
 	}
+	if p.Status != MetadataOnly {
+		t.Fatalf("semantic_scholar remains metadata-only until public rate limits are reliable, got %s", p.Status)
+	}
+}
+
+func TestQuotaTrackingMetadata(t *testing.T) {
+	for _, id := range []string{"brave", "browserbase", "openalex", "worldnews", "serpstack"} {
+		p, ok := ByID(id)
+		if !ok {
+			t.Fatalf("missing %s", id)
+		}
+		if p.Quota.Mode == "" {
+			t.Fatalf("%s quota mode missing", id)
+		}
+		if p.Quota.Source == "" && p.ID != "direct" {
+			t.Fatalf("%s quota source missing", id)
+		}
+	}
 }
 
 func TestEnvExampleCoversCredentialFields(t *testing.T) {

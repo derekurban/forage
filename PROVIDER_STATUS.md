@@ -8,9 +8,9 @@ These providers have mocked adapter coverage and passed local Windows smoke chec
 
 | Capability | Providers |
 | --- | --- |
-| Web search | Brave, Jina, Browserbase, Tavily, Exa |
+| Web search | Brave, Jina, Browserbase, Tavily, Exa, SerpApi, serpstack |
 | Fetch/extract | Jina Reader, Browserbase Fetch, Firecrawl, ScrapingAnt, Direct HTTP |
-| News | Brave News, Guardian, GNews, NewsAPI |
+| News | Brave News, Guardian, GNews, NewsAPI, Currents, Mediastack, World News API |
 | Platform | Hacker News, Forem |
 | Scholar | OpenAlex, Crossref, arXiv, PubMed, DataCite, Europe PMC, DOAJ |
 | Archive/corpus | Internet Archive, Common Crawl |
@@ -23,15 +23,10 @@ These providers remain registered for setup and future adapters, but should not 
 
 | Provider | Current role |
 | --- | --- |
-| SerpApi | Metadata-only SERP provider |
-| serpstack | Metadata-only SERP provider |
 | Apify | Metadata-only crawl/extract/render provider |
 | Browserless | Metadata-only render provider |
-| Currents | Metadata-only news provider |
 | GDELT | Metadata-only news/archive provider; public endpoint is slow/unreliable from the Windows release environment |
-| Mediastack | Metadata-only news provider |
-| World News API | Metadata-only news provider |
-| Semantic Scholar | Public no-key metadata-only scholarly provider |
+| Semantic Scholar | Adapter exists, but unauthenticated public endpoint returned 429 during local smoke checks |
 | Wikidata | Metadata-only identity graph provider |
 | OpenCitations | Metadata-only citation provider |
 | ORCID | Metadata-only identity provider |
@@ -53,3 +48,15 @@ go run ./cmd/forage search news "climate" --limit 3 --cache refresh --explain-ro
 go run ./cmd/forage search scholar "machine learning" --limit 3 --cache refresh --json
 go run ./cmd/forage fetch https://example.com --cache refresh --json
 ```
+
+## Quota Tracking
+
+Forage tracks quota in three tiers:
+
+| Tracking mode | Providers | What Forage can do |
+| --- | --- | --- |
+| Response headers | Brave, Browserbase, OpenAlex, PubMed, Guardian, World News API, Crossref when headers appear | Persist observed limit, remaining, reset, retry, and provider status |
+| Provider endpoint | OpenAlex | Preflight/check account quota with `/rate-limit` once wired into doctor/quota commands |
+| Manual/inferred | Tavily, Exa, Firecrawl, Jina, GNews, NewsAPI, Currents, Mediastack, SerpApi, serpstack, Semantic Scholar, public/free APIs | Track local attempts, successes, 429s, failures, and documented manual limits |
+
+Sources used for quota behavior include Brave rate-limit headers, Browserbase `RateLimit-*` headers, OpenAlex `X-RateLimit-*` headers and `/rate-limit`, Exa QPS docs, Firecrawl 429 behavior, World News API quota headers, Serpstack usage-limit error bodies, and Semantic Scholar public/authenticated rate notes.

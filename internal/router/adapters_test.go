@@ -107,6 +107,7 @@ func TestHTTPAdapterScholarProviders(t *testing.T) {
 		{"openalex", `{"results":[{"id":"W1","doi":"10.1/x","title":"Paper","publication_year":2024,"primary_location":{"landing_page_url":"https://example.com/p"}}]}`},
 		{"crossref", `{"message":{"items":[{"DOI":"10.1/x","title":["Paper"],"URL":"https://example.com/p"}]}}`},
 		{"pubmed", `{"esearchresult":{"idlist":["123"]}}|{"result":{"123":{"uid":"123","title":"Paper"}}}`},
+		{"semantic_scholar", `{"data":[{"paperId":"S1","title":"Paper","abstract":"Abstract","url":"https://example.com/p","year":2024,"externalIds":{"DOI":"10.1/x"}}]}`},
 		{"datacite", `{"data":[{"id":"10.1/x","attributes":{"doi":"10.1/x","titles":[{"title":"Paper"}],"url":"https://example.com/p","publicationYear":2024}}]}`},
 		{"europepmc", `{"resultList":{"result":[{"id":"123","doi":"10.1/x","title":"Paper","abstractText":"Abstract"}]}}`},
 		{"doaj", `{"results":[{"bibjson":{"title":"Paper","identifier":[{"type":"doi","id":"10.1/x"}],"link":[{"url":"https://example.com/p"}]}}]}`},
@@ -216,5 +217,18 @@ func TestHTTPAdapterNormalizesCommaSeparatedRateLimitHeaders(t *testing.T) {
 	}
 	if pe.RetryAfter != "5" || pe.ResetAt != "1" {
 		t.Fatalf("retry/reset = %q/%q", pe.RetryAfter, pe.ResetAt)
+	}
+}
+
+func TestParseObservedQuota(t *testing.T) {
+	limit, remaining, used := parseObservedQuota("x-ratelimit-limit=100, 1000; x-ratelimit-remaining=42, 999; x-ratelimit-credits-used=3")
+	if limit == nil || *limit != 100 {
+		t.Fatalf("limit = %+v", limit)
+	}
+	if remaining == nil || *remaining != 42 {
+		t.Fatalf("remaining = %+v", remaining)
+	}
+	if used == nil || *used != 3 {
+		t.Fatalf("used = %+v", used)
 	}
 }

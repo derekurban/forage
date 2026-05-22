@@ -277,9 +277,11 @@ func (r Router) observeProviderError(id string, err error) {
 	reason := classify(err)
 	retry := ""
 	httpStatus := 0
+	var limitValue, remaining, used *int64
 	if errors.As(err, &pe) {
 		retry = pe.RetryAfter
 		httpStatus = pe.HTTPStatus
+		limitValue, remaining, used = parseObservedQuota(pe.Observed)
 		if pe.Code == "rate_limited" {
 			status = "cooldown"
 		}
@@ -297,7 +299,7 @@ func (r Router) observeProviderError(id string, err error) {
 		reset = pe.ResetAt
 		observed = pe.Observed
 	}
-	_ = r.State.UpsertProviderState(state.ProviderState{Provider: id, Status: status, Reason: reason, RetryAfter: retry, ResetAt: reset, LastHTTPStatus: hs, LastCheckedAt: time.Now().UTC().Format(time.RFC3339), Observed: observed})
+	_ = r.State.UpsertProviderState(state.ProviderState{Provider: id, Status: status, Reason: reason, Limit: limitValue, Remaining: remaining, Used: used, RetryAfter: retry, ResetAt: reset, LastHTTPStatus: hs, LastCheckedAt: time.Now().UTC().Format(time.RFC3339), Observed: observed})
 }
 
 func (r Router) observeProviderSuccess(id string) {
@@ -434,6 +436,29 @@ func dedupe(in []capability.SearchResult) []capability.SearchResult {
 		out = append(out, r)
 	}
 	return out
+}
+
+func parseObservedQuota(observed string) (*int64, *int64, *int64) {
+	var limitValue, remaining, used *int64
+	for _, part := range strings.Split(observed, ";") {
+		k, v, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if !ok {
+			continue
+		}
+		n, err := strconv.ParseInt(firstHeaderValue(v), 10, 64)
+		if err != nil {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(k)) {
+		case "x-ratelimit-limit", "ratelimit-limit", "x-rate-limit-limit":
+			limitValue = &n
+		case "x-ratelimit-remaining", "ratelimit-remaining", "x-rate-limit-remaining":
+			remaining = &n
+		case "x-ratelimit-used", "ratelimit-used", "x-ratelimit-credits-used":
+			used = &n
+		}
+	}
+	return limitValue, remaining, used
 }
 
 func canonicalURL(primary, fallback string) string {

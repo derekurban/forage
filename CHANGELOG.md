@@ -2,6 +2,9 @@
 
 ## v0.1.1
 
+- Promoted Currents, Mediastack, World News API, SerpApi, and serpstack after adapter/smoke verification.
+- Added a Semantic Scholar adapter but kept it metadata-only because unauthenticated local smoke checks returned 429.
+- Added provider quota tracking metadata and persisted observed limit/remaining/used fields.
 - Config repair for stale provider routes and removed provider cleanup.
 - Mocked adapter coverage for live web, news, scholar, and fetch providers.
 - CLI tests for config, missing config, and provider registry JSON output.

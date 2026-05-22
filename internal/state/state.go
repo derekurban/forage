@@ -18,7 +18,9 @@ type ProviderState struct {
 	Provider       string `json:"provider"`
 	Status         string `json:"status"`
 	Reason         string `json:"reason,omitempty"`
+	Limit          *int64 `json:"limit,omitempty"`
 	Remaining      *int64 `json:"remaining,omitempty"`
+	Used           *int64 `json:"used,omitempty"`
 	ResetAt        string `json:"reset_at,omitempty"`
 	RetryAfter     string `json:"retry_after,omitempty"`
 	LastHTTPStatus *int   `json:"last_http_status,omitempty"`
@@ -73,7 +75,9 @@ CREATE TABLE IF NOT EXISTS provider_state(
   provider TEXT PRIMARY KEY,
   status TEXT NOT NULL,
   reason TEXT,
+  limit_value INTEGER,
   remaining INTEGER,
+  used INTEGER,
   reset_at TEXT,
   retry_after TEXT,
   last_http_status INTEGER,
@@ -117,7 +121,16 @@ CREATE TABLE IF NOT EXISTS provider_attempts(
 );
 INSERT OR IGNORE INTO schema_migrations(version) VALUES(1);
 `)
-	return err
+	if err != nil {
+		return err
+	}
+	for _, stmt := range []string{
+		`ALTER TABLE provider_state ADD COLUMN limit_value INTEGER`,
+		`ALTER TABLE provider_state ADD COLUMN used INTEGER`,
+	} {
+		_, _ = s.db.Exec(stmt)
+	}
+	return nil
 }
 
 func (s *Store) PutRecord(kind, cacheKey, provider, url, title string, payload any) error {
@@ -206,24 +219,26 @@ func (s *Store) UpsertProviderState(ps ProviderState) error {
 		ps.LastCheckedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 	_, err := s.db.Exec(`
-INSERT INTO provider_state(provider,status,reason,remaining,reset_at,retry_after,last_http_status,last_checked_at,last_success_at,observed)
-VALUES(?,?,?,?,?,?,?,?,?,?)
+INSERT INTO provider_state(provider,status,reason,limit_value,remaining,used,reset_at,retry_after,last_http_status,last_checked_at,last_success_at,observed)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(provider) DO UPDATE SET
   status=excluded.status,
   reason=excluded.reason,
+  limit_value=excluded.limit_value,
   remaining=excluded.remaining,
+  used=excluded.used,
   reset_at=excluded.reset_at,
   retry_after=excluded.retry_after,
   last_http_status=excluded.last_http_status,
   last_checked_at=excluded.last_checked_at,
   last_success_at=excluded.last_success_at,
   observed=excluded.observed
-`, ps.Provider, ps.Status, ps.Reason, ps.Remaining, ps.ResetAt, ps.RetryAfter, ps.LastHTTPStatus, ps.LastCheckedAt, ps.LastSuccessAt, ps.Observed)
+`, ps.Provider, ps.Status, ps.Reason, ps.Limit, ps.Remaining, ps.Used, ps.ResetAt, ps.RetryAfter, ps.LastHTTPStatus, ps.LastCheckedAt, ps.LastSuccessAt, ps.Observed)
 	return err
 }
 
 func (s *Store) ProviderStates() ([]ProviderState, error) {
-	rows, err := s.db.Query(`SELECT provider,status,COALESCE(reason,''),remaining,COALESCE(reset_at,''),COALESCE(retry_after,''),last_http_status,last_checked_at,COALESCE(last_success_at,''),COALESCE(observed,'') FROM provider_state ORDER BY provider`)
+	rows, err := s.db.Query(`SELECT provider,status,COALESCE(reason,''),limit_value,remaining,used,COALESCE(reset_at,''),COALESCE(retry_after,''),last_http_status,last_checked_at,COALESCE(last_success_at,''),COALESCE(observed,'') FROM provider_state ORDER BY provider`)
 	if err != nil {
 		return nil, err
 	}
@@ -231,13 +246,19 @@ func (s *Store) ProviderStates() ([]ProviderState, error) {
 	out := []ProviderState{}
 	for rows.Next() {
 		var ps ProviderState
-		var remaining sql.NullInt64
+		var limitValue, remaining, used sql.NullInt64
 		var status sql.NullInt64
-		if err := rows.Scan(&ps.Provider, &ps.Status, &ps.Reason, &remaining, &ps.ResetAt, &ps.RetryAfter, &status, &ps.LastCheckedAt, &ps.LastSuccessAt, &ps.Observed); err != nil {
+		if err := rows.Scan(&ps.Provider, &ps.Status, &ps.Reason, &limitValue, &remaining, &used, &ps.ResetAt, &ps.RetryAfter, &status, &ps.LastCheckedAt, &ps.LastSuccessAt, &ps.Observed); err != nil {
 			return nil, err
+		}
+		if limitValue.Valid {
+			ps.Limit = &limitValue.Int64
 		}
 		if remaining.Valid {
 			ps.Remaining = &remaining.Int64
+		}
+		if used.Valid {
+			ps.Used = &used.Int64
 		}
 		if status.Valid {
 			v := int(status.Int64)
@@ -250,17 +271,23 @@ func (s *Store) ProviderStates() ([]ProviderState, error) {
 
 func (s *Store) ProviderState(provider string) (ProviderState, bool, error) {
 	var ps ProviderState
-	var remaining sql.NullInt64
+	var limitValue, remaining, used sql.NullInt64
 	var status sql.NullInt64
-	err := s.db.QueryRow(`SELECT provider,status,COALESCE(reason,''),remaining,COALESCE(reset_at,''),COALESCE(retry_after,''),last_http_status,last_checked_at,COALESCE(last_success_at,''),COALESCE(observed,'') FROM provider_state WHERE provider=?`, provider).Scan(&ps.Provider, &ps.Status, &ps.Reason, &remaining, &ps.ResetAt, &ps.RetryAfter, &status, &ps.LastCheckedAt, &ps.LastSuccessAt, &ps.Observed)
+	err := s.db.QueryRow(`SELECT provider,status,COALESCE(reason,''),limit_value,remaining,used,COALESCE(reset_at,''),COALESCE(retry_after,''),last_http_status,last_checked_at,COALESCE(last_success_at,''),COALESCE(observed,'') FROM provider_state WHERE provider=?`, provider).Scan(&ps.Provider, &ps.Status, &ps.Reason, &limitValue, &remaining, &used, &ps.ResetAt, &ps.RetryAfter, &status, &ps.LastCheckedAt, &ps.LastSuccessAt, &ps.Observed)
 	if err == sql.ErrNoRows {
 		return ProviderState{}, false, nil
 	}
 	if err != nil {
 		return ProviderState{}, false, err
 	}
+	if limitValue.Valid {
+		ps.Limit = &limitValue.Int64
+	}
 	if remaining.Valid {
 		ps.Remaining = &remaining.Int64
+	}
+	if used.Valid {
+		ps.Used = &used.Int64
 	}
 	if status.Valid {
 		v := int(status.Int64)
