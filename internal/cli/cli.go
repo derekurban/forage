@@ -22,6 +22,7 @@ import (
 	"github.com/derekurban/forage/internal/config"
 	"github.com/derekurban/forage/internal/credentials"
 	"github.com/derekurban/forage/internal/doctor"
+	"github.com/derekurban/forage/internal/envfile"
 	"github.com/derekurban/forage/internal/evidence"
 	"github.com/derekurban/forage/internal/output"
 	"github.com/derekurban/forage/internal/providers"
@@ -37,6 +38,10 @@ type app struct {
 }
 
 func Execute() int {
+	if err := envfile.Load(); err != nil {
+		_ = output.WriteError(os.Stderr, output.Options{}, "forage", apperr.New(apperr.CodeInvalidConfig, "Failed to load .env: "+err.Error(), apperr.ExitInvalidArgsOrConfig))
+		return apperr.ExitInvalidArgsOrConfig
+	}
 	a := &app{}
 	root := a.rootCmd()
 	if err := root.Execute(); err != nil {

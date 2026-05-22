@@ -44,6 +44,16 @@ forage config init
 
 Secrets are stored in the OS keychain by default. Environment variables are supported as fallback/override, but their values are never persisted to config.
 
+For local validation, copy the repo-local template and fill in provider credentials:
+
+```powershell
+Copy-Item .env.example .env
+notepad .env
+forage providers doctor --all --json
+```
+
+Existing process environment variables take precedence over `.env`. The `.env` file is gitignored and should never be committed.
+
 ## Common Commands
 
 ```powershell

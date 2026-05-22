@@ -1,6 +1,11 @@
 package providers
 
-import "testing"
+import (
+	"os"
+	"regexp"
+	"strings"
+	"testing"
+)
 
 func TestRegistryContainsRecurringFreeProductionSet(t *testing.T) {
 	ps := Registry()
@@ -45,6 +50,66 @@ func TestRegistryCredentialFieldsAndLegacyOptional(t *testing.T) {
 	}
 	if len(reddit.CredentialFields) < 3 {
 		t.Fatalf("reddit credential fields = %+v", reddit.CredentialFields)
+	}
+}
+
+func TestEnvExampleCoversCredentialFields(t *testing.T) {
+	b, err := os.ReadFile("../../.env.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	envNames := map[string]bool{}
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		name, _, ok := strings.Cut(line, "=")
+		if ok {
+			envNames[strings.TrimSpace(name)] = true
+		}
+	}
+	for _, p := range Registry() {
+		for _, f := range p.CredentialFields {
+			if f.EnvVar == "" {
+				continue
+			}
+			if !envNames[f.EnvVar] {
+				t.Fatalf("%s.%s env var %s missing from .env.example", p.ID, f.Name, f.EnvVar)
+			}
+		}
+	}
+}
+
+func TestEnvExampleContainsNoRealLookingSecrets(t *testing.T) {
+	b, err := os.ReadFile("../../.env.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	re := regexp.MustCompile(`(?m)^[A-Z0-9_]+=(.+)$`)
+	for _, m := range re.FindAllStringSubmatch(string(b), -1) {
+		value := strings.TrimSpace(m[1])
+		if value == "" {
+			continue
+		}
+		if strings.Contains(value, "YOUR_REDDIT_USERNAME") {
+			continue
+		}
+		t.Fatalf(".env.example contains non-placeholder value %q", value)
+	}
+}
+
+func TestUnpaywallEmailCredential(t *testing.T) {
+	p, ok := ByID("unpaywall")
+	if !ok {
+		t.Fatal("missing unpaywall")
+	}
+	if len(p.CredentialFields) != 1 {
+		t.Fatalf("unpaywall fields = %+v", p.CredentialFields)
+	}
+	f := p.CredentialFields[0]
+	if f.EnvVar != "UNPAYWALL_EMAIL" || f.Secret || !f.Required {
+		t.Fatalf("unexpected unpaywall field: %+v", f)
 	}
 }
 

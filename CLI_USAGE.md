@@ -29,6 +29,18 @@ forage credentials remove brave
 
 Secrets are not written to `.forage/config.yaml`.
 
+For local validation without manually exporting variables:
+
+```powershell
+Copy-Item .env.example .env
+notepad .env
+forage providers doctor --all --json
+```
+
+`.env` is repo-local, gitignored, and loaded before credential checks. Existing process environment variables win over values from `.env`.
+
+No credentials are needed for Hacker News, GDELT, OpenAlex, Crossref, arXiv, DataCite, Wikidata, Internet Archive, Common Crawl, public WordPress REST, Forem, DOAJ, or Europe PMC.
+
 ## Health and Quota
 
 ```powershell

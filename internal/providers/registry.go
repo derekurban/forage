@@ -138,6 +138,8 @@ func credentialFields(p Provider) []CredentialField {
 		return []CredentialField{{Name: "token", EnvVar: "WORDPRESS_COM_TOKEN", Secret: true, Required: true, Description: "WordPress.com OAuth bearer token"}}
 	case "crossref":
 		return []CredentialField{{Name: "contact_email", EnvVar: "FORAGE_CONTACT_EMAIL", Secret: false, Required: false, Description: "Contact email for Crossref polite pool user-agent"}}
+	case "unpaywall":
+		return []CredentialField{{Name: "email", EnvVar: "UNPAYWALL_EMAIL", Secret: false, Required: true, Description: "Contact email required by Unpaywall API requests"}}
 	}
 	if p.AuthType == AuthAPIKey {
 		return []CredentialField{{Name: "api_key", EnvVar: p.EnvVar, Secret: true, Required: !p.OptionalAuth, Description: p.Name + " API key"}}
