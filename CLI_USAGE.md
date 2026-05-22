@@ -41,7 +41,7 @@ forage providers doctor --all --json
 
 No credentials are needed for Hacker News, GDELT, Semantic Scholar public endpoints, Crossref, arXiv, DataCite, Wikidata, Internet Archive, Common Crawl, Forem, DOAJ, or Europe PMC.
 
-Blogger, WordPress API endpoints, Reddit, Diffbot, and ScraperAPI are intentionally excluded from the v0.1 provider setup. Google Custom Search keeps a legacy optional API key placeholder, but `GOOGLE_CSE_CX` is intentionally not collected.
+Blogger, WordPress API endpoints, Reddit, Google Custom Search, Diffbot, and ScraperAPI are intentionally excluded from the v0.1 provider setup.
 
 ## Health and Quota
 

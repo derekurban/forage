@@ -54,10 +54,7 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if !Enabled(cfg, "browserbase") {
 		t.Fatal("browserbase should be enabled by default")
 	}
-	if Enabled(cfg, "google_cse") {
-		t.Fatal("google_cse should remain legacy optional and disabled by default")
-	}
-	for _, removed := range []string{"blogger", "wordpress", "wordpress_com", "diffbot", "reddit"} {
+	for _, removed := range []string{"blogger", "wordpress", "wordpress_com", "diffbot", "google_cse", "reddit"} {
 		if Enabled(cfg, removed) {
 			t.Fatalf("%s should not be enabled by default", removed)
 		}

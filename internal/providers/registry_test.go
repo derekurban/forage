@@ -44,13 +44,6 @@ func TestRegistryCredentialFields(t *testing.T) {
 	if brave.CredentialFields[1].EnvVar != "BRAVE_ANSWERS_API_KEY" || brave.CredentialFields[1].Required {
 		t.Fatalf("unexpected brave answers field: %+v", brave.CredentialFields[1])
 	}
-	google, ok := ByID("google_cse")
-	if !ok {
-		t.Fatal("missing google_cse")
-	}
-	if google.Status != LegacyOptional || google.CredentialFields[0].EnvVar != "GOOGLE_CSE_API_KEY" {
-		t.Fatalf("unexpected google_cse metadata: %+v", google)
-	}
 	orcid, ok := ByID("orcid")
 	if !ok {
 		t.Fatal("missing orcid")
@@ -64,7 +57,7 @@ func TestRegistryCredentialFields(t *testing.T) {
 }
 
 func TestRemovedProvidersAreNotRegistered(t *testing.T) {
-	for _, id := range []string{"blogger", "wordpress", "wordpress_com", "diffbot", "scraperapi", "reddit"} {
+	for _, id := range []string{"blogger", "wordpress", "wordpress_com", "diffbot", "scraperapi", "google_cse", "reddit"} {
 		if _, ok := ByID(id); ok {
 			t.Fatalf("%s should not be registered", id)
 		}
