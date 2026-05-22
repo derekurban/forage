@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+      - name: Build
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}"
+          $commit = "${{ github.sha }}"
+          $date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          go build -ldflags "-X github.com/derekurban/forage/internal/version.Version=$version -X github.com/derekurban/forage/internal/version.Commit=$commit -X github.com/derekurban/forage/internal/version.Date=$date" -o dist/forage.exe ./cmd/forage
+          Copy-Item README.md dist/README.md
+          Copy-Item LICENSE dist/LICENSE
+          Compress-Archive -Path dist/forage.exe,dist/README.md,dist/LICENSE -DestinationPath forage-windows-amd64.zip
+          Get-FileHash forage-windows-amd64.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  forage-windows-amd64.zip" } | Set-Content forage-windows-amd64.zip.sha256
+      - name: Smoke
+        shell: pwsh
+        run: .\dist\forage.exe version --json
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            forage-windows-amd64.zip
+            forage-windows-amd64.zip.sha256

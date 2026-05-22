@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+      - name: Test
+        run: go test ./...
+      - name: Build
+        run: go build ./cmd/forage
+      - name: Version smoke
+        shell: pwsh
+        run: .\forage.exe version --json

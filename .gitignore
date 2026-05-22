@@ -1,0 +1,12 @@
+.forage/config.yaml
+.forage/state.db
+.forage/state.db-*
+.forage/evidence/
+forage.exe
+*.exe
+*.log
+dist/
+build/
+coverage.out
+.env
+.DS_Store
