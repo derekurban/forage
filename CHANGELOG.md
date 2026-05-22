@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.5
+
+- Fixed cache keys so `--cache refresh`, `--cache auto`, and `--cache only` resolve the same request record instead of treating cache mode as part of the lookup identity.
+- Fixed PubMed scholar parsing for NCBI `esummary` responses that include the `uids` array inside the result object.
+- Added optional API-key retry behavior for providers such as PubMed so malformed keyed responses can fall back to public no-key requests.
+
 ## v0.1.4
 
 - Sanitized OpenAlex quota preflight observations so provider diagnostic output never stores or emits API key fields from provider response bodies.

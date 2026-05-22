@@ -106,7 +106,7 @@ func TestHTTPAdapterScholarProviders(t *testing.T) {
 	}{
 		{"openalex", `{"results":[{"id":"W1","doi":"10.1/x","title":"Paper","publication_year":2024,"primary_location":{"landing_page_url":"https://example.com/p"}}]}`},
 		{"crossref", `{"message":{"items":[{"DOI":"10.1/x","title":["Paper"],"URL":"https://example.com/p"}]}}`},
-		{"pubmed", `{"esearchresult":{"idlist":["123"]}}|{"result":{"123":{"uid":"123","title":"Paper"}}}`},
+		{"pubmed", `{"esearchresult":{"idlist":["123"]}}|{"result":{"uids":["123"],"123":{"uid":"123","title":"Paper"}}}`},
 		{"semantic_scholar", `{"data":[{"paperId":"S1","title":"Paper","abstract":"Abstract","url":"https://example.com/p","year":2024,"externalIds":{"DOI":"10.1/x"}}]}`},
 		{"datacite", `{"data":[{"id":"10.1/x","attributes":{"doi":"10.1/x","titles":[{"title":"Paper"}],"url":"https://example.com/p","publicationYear":2024}}]}`},
 		{"europepmc", `{"resultList":{"result":[{"id":"123","doi":"10.1/x","title":"Paper","abstractText":"Abstract"}]}}`},
@@ -244,6 +244,28 @@ func TestHTTPAdapterProviderFailures(t *testing.T) {
 				t.Fatalf("code = %s", pe.Code)
 			}
 		})
+	}
+}
+
+func TestOptionalAPIKeyRetriesWithoutKey(t *testing.T) {
+	count := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count++
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("api_key") != "" {
+			_, _ = w.Write([]byte(`<ERROR>bad key</ERROR>`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+	a := HTTPAdapter{id: "pubmed", client: testClient(ts), creds: fakeCreds{}}
+	var raw map[string]any
+	if err := a.getJSONWithOptionalAPIKey(context.Background(), "https://eutils.ncbi.nlm.nih.gov/test", "api_key", "bad", &raw); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 || raw["ok"] != true {
+		t.Fatalf("count=%d raw=%+v", count, raw)
 	}
 }
 

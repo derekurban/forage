@@ -684,37 +684,34 @@ func (a HTTPAdapter) searchScholar(ctx context.Context, req capability.SearchReq
 		return parseArxiv(txt, a.id), nil
 	case "pubmed":
 		key, _ := a.creds.Get("pubmed", "NCBI_API_KEY")
-		u := "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&retmode=json&term=" + q + "&retmax=" + fmt.Sprint(limit(req.Limit))
-		if key.Value != "" {
-			u += "&api_key=" + url.QueryEscape(key.Value)
-		}
 		var search struct {
 			ESearchResult struct {
 				IDList []string `json:"idlist"`
 			} `json:"esearchresult"`
 		}
-		if err := a.getJSON(ctx, u, nil, &search); err != nil {
+		u := "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&retmode=json&term=" + q + "&retmax=" + fmt.Sprint(limit(req.Limit))
+		if err := a.getJSONWithOptionalAPIKey(ctx, u, "api_key", key.Value, &search); err != nil {
 			return nil, err
 		}
 		if len(search.ESearchResult.IDList) == 0 {
 			return nil, nil
 		}
 		sumURL := "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&retmode=json&id=" + strings.Join(search.ESearchResult.IDList, ",")
-		if key.Value != "" {
-			sumURL += "&api_key=" + url.QueryEscape(key.Value)
-		}
 		var sum struct {
-			Result map[string]struct {
-				UID, Title, FullJournalName string
-				PubDate                     string
-			} `json:"result"`
+			Result map[string]json.RawMessage `json:"result"`
 		}
-		if err := a.getJSON(ctx, sumURL, nil, &sum); err != nil {
+		if err := a.getJSONWithOptionalAPIKey(ctx, sumURL, "api_key", key.Value, &sum); err != nil {
 			return nil, err
 		}
 		var out []capability.ScholarWork
 		for _, id := range search.ESearchResult.IDList {
-			r := sum.Result[id]
+			var r struct {
+				UID, Title, FullJournalName string
+				PubDate                     string
+			}
+			if err := json.Unmarshal(sum.Result[id], &r); err != nil {
+				continue
+			}
 			out = append(out, capability.ScholarWork{ID: id, Title: r.Title, URL: "https://pubmed.ncbi.nlm.nih.gov/" + id + "/", Provider: a.id})
 		}
 		return out, nil
@@ -901,6 +898,22 @@ func (a HTTPAdapter) getJSON(ctx context.Context, u string, headers map[string]s
 		return ProviderError{Code: "malformed_response", Message: "provider returned malformed JSON"}
 	}
 	return nil
+}
+
+func (a HTTPAdapter) getJSONWithOptionalAPIKey(ctx context.Context, u, keyParam, keyValue string, dest any) error {
+	keyValue = strings.TrimSpace(keyValue)
+	if keyValue == "" {
+		return a.getJSON(ctx, u, nil, dest)
+	}
+	sep := "?"
+	if strings.Contains(u, "?") {
+		sep = "&"
+	}
+	err := a.getJSON(ctx, u+sep+url.QueryEscape(keyParam)+"="+url.QueryEscape(keyValue), nil, dest)
+	if err == nil {
+		return nil
+	}
+	return a.getJSON(ctx, u, nil, dest)
 }
 
 func (a HTTPAdapter) postJSON(ctx context.Context, u string, headers map[string]string, body any, dest any) error {

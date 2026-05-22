@@ -237,6 +237,14 @@ func TestSearchReadsNegativeCache(t *testing.T) {
 	}
 }
 
+func TestCacheKeyIgnoresCacheModeAndDiagnostics(t *testing.T) {
+	a := capability.SearchRequest{Query: "x", Capability: capability.SearchWeb, Limit: 1, CacheMode: "refresh", ExplainRouting: true}
+	b := capability.SearchRequest{Query: "x", Capability: capability.SearchWeb, Limit: 1, CacheMode: "only", ExplainRouting: false}
+	if cacheKey("search", a) != cacheKey("search", b) {
+		t.Fatal("cache key should ignore cache mode and routing diagnostics")
+	}
+}
+
 func TestFetchFallsBackOnPoorQuality(t *testing.T) {
 	st, err := state.Open(filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {

@@ -505,6 +505,20 @@ func (r Router) observeProviderSuccess(id string) {
 }
 
 func cacheKey(kind string, v any) string {
+	switch req := v.(type) {
+	case capability.SearchRequest:
+		req.CacheMode = ""
+		req.ExplainRouting = false
+		v = req
+	case capability.FetchRequest:
+		req.CacheMode = ""
+		req.ExplainRouting = false
+		v = req
+	case capability.DataRequest:
+		req.CacheMode = ""
+		req.ExplainRouting = false
+		v = req
+	}
 	b, _ := json.Marshal(v)
 	sum := sha256.Sum256(append([]byte(kind+":"), b...))
 	return hex.EncodeToString(sum[:])
