@@ -73,6 +73,24 @@ func TestNegativeCacheActive(t *testing.T) {
 	}
 }
 
+func TestPutRecordClearsNegativeCache(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.PutNegativeCache("k", "cache_miss", 5*time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PutRecord("search", "k", "brave", "", "title", map[string]string{"ok": "true"}); err != nil {
+		t.Fatal(err)
+	}
+	_, ok, err := st.NegativeCacheActive("k")
+	if err != nil || ok {
+		t.Fatalf("negative cache after PutRecord ok=%v err=%v", ok, err)
+	}
+}
+
 func TestStats(t *testing.T) {
 	st, err := Open(filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {

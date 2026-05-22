@@ -151,6 +151,7 @@ func (s *Store) PutRecord(kind, cacheKey, provider, url, title string, payload a
 	if err != nil {
 		return err
 	}
+	_, _ = s.db.Exec(`DELETE FROM negative_cache WHERE cache_key=?`, cacheKey)
 	_, err = s.db.Exec(`INSERT INTO records(kind,cache_key,provider,url,title,payload,created_at) VALUES(?,?,?,?,?,?,?)`,
 		kind, cacheKey, provider, url, title, string(b), time.Now().UTC().Format(time.RFC3339))
 	return err

@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.6
+
+- Cleared stale negative-cache entries whenever a successful record is stored, so an earlier `--cache only` miss cannot continue blocking later refresh results.
+
 ## v0.1.5
 
 - Fixed cache keys so `--cache refresh`, `--cache auto`, and `--cache only` resolve the same request record instead of treating cache mode as part of the lookup identity.
