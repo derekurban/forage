@@ -30,31 +30,21 @@ func TestRegistryContainsRecurringFreeProductionSet(t *testing.T) {
 	}
 }
 
-func TestRegistryCredentialFieldsAndLegacyOptional(t *testing.T) {
-	p, ok := ByID("google_cse")
+func TestRegistryCredentialFields(t *testing.T) {
+	orcid, ok := ByID("orcid")
 	if !ok {
-		t.Fatal("missing google_cse")
+		t.Fatal("missing orcid")
 	}
-	if p.Status != LegacyOptional || p.SetupGroup != "legacy_optional" {
-		t.Fatalf("google_cse status/group = %s/%s", p.Status, p.SetupGroup)
+	if orcid.SetupGroup != "oauth" {
+		t.Fatalf("orcid group = %s", orcid.SetupGroup)
 	}
-	if len(p.CredentialFields) != 2 {
-		t.Fatalf("google_cse fields = %+v", p.CredentialFields)
-	}
-	reddit, ok := ByID("reddit")
-	if !ok {
-		t.Fatal("missing reddit")
-	}
-	if reddit.SetupGroup != "oauth" {
-		t.Fatalf("reddit group = %s", reddit.SetupGroup)
-	}
-	if len(reddit.CredentialFields) < 3 {
-		t.Fatalf("reddit credential fields = %+v", reddit.CredentialFields)
+	if len(orcid.CredentialFields) != 2 {
+		t.Fatalf("orcid credential fields = %+v", orcid.CredentialFields)
 	}
 }
 
 func TestRemovedProvidersAreNotRegistered(t *testing.T) {
-	for _, id := range []string{"blogger", "wordpress", "wordpress_com", "diffbot", "scraperapi"} {
+	for _, id := range []string{"blogger", "wordpress", "wordpress_com", "diffbot", "scraperapi", "google_cse", "reddit"} {
 		if _, ok := ByID(id); ok {
 			t.Fatalf("%s should not be registered", id)
 		}
@@ -111,9 +101,6 @@ func TestEnvExampleContainsNoRealLookingSecrets(t *testing.T) {
 	for _, m := range re.FindAllStringSubmatch(string(b), -1) {
 		value := strings.TrimSpace(m[1])
 		if value == "" {
-			continue
-		}
-		if strings.Contains(value, "YOUR_REDDIT_USERNAME") {
 			continue
 		}
 		t.Fatalf(".env.example contains non-placeholder value %q", value)

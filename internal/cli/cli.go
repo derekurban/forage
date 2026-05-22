@@ -677,9 +677,6 @@ func (a *app) platformCmd() *cobra.Command {
 	cmd.AddCommand(&cobra.Command{Use: "hn QUERY", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		return a.runSearch(cmd, capability.SearchPlatform, args[0], []string{"hackernews"}, nil, 10, "", "", "auto", false)
 	}})
-	cmd.AddCommand(&cobra.Command{Use: "reddit QUERY", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		return a.runSearch(cmd, capability.SearchPlatform, args[0], []string{"reddit"}, nil, 10, "", "", "auto", false)
-	}})
 	return cmd
 }
 

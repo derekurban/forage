@@ -18,7 +18,7 @@ A robust research stack usually needs:
 1. **Discovery** — search APIs, SERPs, news indexes, scholarly indexes.
 2. **Fetch/extraction** — URL-to-markdown/text, JS rendering, article extraction, PDF handling.
 3. **Corpus APIs** — OpenAlex, PubMed, Crossref, Semantic Scholar, GDELT, Common Crawl, Internet Archive, etc.
-4. **Source-specific APIs** — Forem/DEV, Hacker News, Guardian, Reddit, archive/corpus APIs, etc.
+4. **Source-specific APIs** — Forem/DEV, Hacker News, Guardian, archive/corpus APIs, etc.
 5. **Compliance/cache layer** — canonical URL, date seen, source license/terms, extraction method, robots/ToS flags, deduplication, provenance.
 
 ---
@@ -33,7 +33,6 @@ A robust research stack usually needs:
 | **serpstack** | [serpstack.com/pricing](https://serpstack.com/pricing) | Google SERP API | **100 searches/month free forever** | Google search result JSON; supports many Google result types | Free plan is basic API functionality; JSON only; no support | Basic: **$29.99/month**, **5,000 searches/month** |
 | **Brave Search API** | [Brave Search API pricing](https://api-dashboard.search.brave.com/documentation/pricing) | Search API / news / images / videos / LLM context | **$5 free credits every month**, automatically applied. At **$5/1k search requests**, this is roughly **1,000 search requests/month** for search endpoints | Web search, news search, image/video search, LLM context, autosuggest/spellcheck, answer APIs | Credit-based. Answers have separate query + token pricing. | Search: **$5/1k requests**; Answers: **$4/1k queries + $5/1M input tokens + $5/1M output tokens**; Autosuggest/spellcheck: **$5/10k requests** |
 | **Jina Reader Search (`s.jina.ai`)** | [jina.ai/reader](https://jina.ai/reader/) | AI-friendly search endpoint | Free rate-limited usage: **100 RPM** for search endpoint, with or without free API key | Search endpoint designed to return LLM-friendly web results | Search and reader token usage share quota model; not a classic monthly SERP allowance | Premium raises search to **1,000 RPM** |
-| **Google Custom Search JSON API / Programmable Search** | [Google Custom Search JSON API docs](https://developers.google.com/custom-search/v1/overview) | Programmable web/image search API | **100 queries/day free** | JSON web/image results from configured search engines | **Legacy caveat:** Google states Custom Search JSON API is closed to new customers; existing customers can use it until **2027-01-01** | Paid usage: **$5/1,000 queries**, up to 10,000/day |
 
 ---
 
@@ -63,7 +62,6 @@ A robust research stack usually needs:
 | **GDELT Project** | [gdeltproject.org](https://www.gdeltproject.org/) | Open global news/media/event corpus | Free/open access; updates every **15 minutes** | Global print, broadcast, and web news monitoring in 100+ languages; historical archive back to 1979 for event datasets | Better as a media-intelligence and news-discovery corpus than a clean full-text news API | Free/open data; BigQuery access also available |
 | **Forem / DEV API** | [developers.forem.com/api/v1](https://developers.forem.com/api/v1) | Developer/blog/community articles | Free public API access | DEV/Forem published articles, latest articles, user/org articles, tags, comments | Exact public quota was not clearly surfaced; API-key auth required for user-specific endpoints | No simple paid public pricing surfaced |
 | **Hacker News API** | [github.com/HackerNews/API](https://github.com/HackerNews/API) | Tech article/discussion discovery API | Free public API; official docs state **currently no rate limit** | Near-real-time HN stories, comments, jobs, Ask HN, Show HN, poll items, external URLs | API is intentionally simple/awkward; client should handle trees and extra fields gracefully | Free public API |
-| **Reddit Data API** | [Reddit Data API Wiki](https://support.reddithelp.com/hc/en-us/articles/16160319875092-Reddit-Data-API-Wiki) | Discussion/social/news aggregation API | Free access usage for eligible apps: **100 QPM per OAuth client ID** | Reddit posts/comments/subreddit data and discussion around articles/blogs | OAuth required; user-agent required; deleted content/data retention obligations; commercial/research eligibility and terms matter | Commercial/large-scale access may require separate terms |
 
 ---
 
@@ -134,7 +132,7 @@ A practical free-tier-first architecture could look like this:
 - **General web:** Exa, Tavily, Brave Search API, SerpApi, serpstack, Jina Search.
 - **News:** Currents, GNews, NewsAPI, GDELT, Guardian, Brave News, SerpApi Google News.
 - **Scholarly:** OpenAlex, Semantic Scholar, Crossref, arXiv, PubMed/NCBI, DataCite, OpenCitations, ORCID.
-- **Blogs/platforms:** Forem/DEV, HN API, Reddit API.
+- **Blogs/platforms:** Forem/DEV, HN API.
 
 ## Extraction
 
@@ -189,7 +187,7 @@ If you want the highest immediate leverage without paying, start with:
 | Citation graph | OpenCitations + Crossref + Semantic Scholar + OpenAlex |
 | Historical web/news | Internet Archive + Common Crawl + GDELT |
 | Entity graph | Wikidata + ORCID + OpenAlex |
-| Platform-specific blogs/discussions | Forem/DEV + Hacker News + Reddit |
+| Platform-specific blogs/discussions | Forem/DEV + Hacker News |
 
 ---
 
@@ -204,7 +202,7 @@ The provider list above should be treated as implementation inventory, not as th
 | `search.web` | Broad web discovery for a query | Exa, Tavily, Brave, SerpApi, serpstack, Jina Search | Ranked `SearchResult[]` |
 | `search.news` | Recent or historical news discovery | GDELT, Currents, GNews, NewsAPI, Guardian, Brave News | Ranked `SearchResult[]` with freshness metadata |
 | `search.scholar` | Academic paper and citation discovery | OpenAlex, Semantic Scholar, Crossref, PubMed, arXiv | `WorkResult[]` |
-| `search.platform` | Source-specific discovery | Forem, HN, Reddit | `PlatformResult[]` |
+| `search.platform` | Source-specific discovery | Forem, HN | `PlatformResult[]` |
 | `fetch.url` | Fetch raw URL content without heavy extraction | Native HTTP, Jina Reader, Browserbase, Firecrawl, ScrapingAnt | `FetchedDocument` |
 | `extract.article` | Convert a URL or HTML page to readable text/markdown | Jina Reader, Browserbase, Firecrawl, trafilatura, Readability.js | `ExtractedDocument` |
 | `render.browser` | Load JS-heavy pages, screenshots, DOM snapshots | Browserless, ScrapingAnt, Playwright, Apify | `RenderedPage` |
@@ -333,7 +331,7 @@ The router should implement intent-aware fanout and fallback rather than a fixed
 | Scholarly survey | OpenAlex + Semantic Scholar | Crossref + PubMed/arXiv/DataCite | Use citation graph expansion after initial discovery. |
 | Biomedical topic | PubMed/NCBI + Europe PMC | Semantic Scholar + OpenAlex | Domain-specific APIs beat generic web search. |
 | DOI or paper enrichment | Crossref + OpenAlex | Semantic Scholar + DataCite + Unpaywall | Normalize DOI and external IDs early. |
-| Developer/community signals | HN + Reddit + Forem | Brave/SerpApi restricted to relevant domains | Treat discussions as context, not primary evidence. |
+| Developer/community signals | HN + Forem | Brave/SerpApi restricted to relevant domains, including `site:reddit.com` when useful | Treat discussions as context, not primary evidence. |
 | Historical web/news | GDELT + Internet Archive | Common Crawl URL index | Good for timelines and deleted/changed pages. |
 
 ## Extraction routing
@@ -536,7 +534,7 @@ Recommended precedence:
 |---|---|---|
 | `no-key` | HN, GDELT, Semantic Scholar public endpoints, Crossref, arXiv, Wikidata, Common Crawl, Internet Archive | Lets the CLI work immediately. |
 | `easy-key` | Brave, Jina, Browserbase, OpenAlex, NCBI, SerpApi, Tavily, Exa, Currents, GNews | API key only; good first guided setup. |
-| `oauth` | Reddit, ORCID public credentials where needed | Requires more setup and clearer docs. |
+| `oauth` | ORCID public credentials where needed | Requires more setup and clearer docs. |
 | `browser` | Browserless, Browserbase, ScrapingAnt, Apify, local Playwright | Needed for hard pages and rendering. |
 | `local` | Readability.js, trafilatura, Playwright, Scrapy/Crawlee/Crawl4AI | Reduces external spend; needs runtime dependencies. |
 

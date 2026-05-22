@@ -29,10 +29,10 @@ func (a HTTPAdapter) ID() string { return a.id }
 
 func DefaultAdapters(client *http.Client, creds credentials.Store) []Adapter {
 	ids := []string{
-		"brave", "jina", "browserbase", "tavily", "exa", "serpapi", "serpstack", "google_cse",
+		"brave", "jina", "browserbase", "tavily", "exa", "serpapi", "serpstack",
 		"direct", "firecrawl", "scrapingant", "apify",
 		"gdelt", "guardian", "currents", "gnews", "newsapi", "mediastack", "worldnews",
-		"hackernews", "forem", "reddit",
+		"hackernews", "forem",
 		"openalex", "semantic_scholar", "crossref", "arxiv", "pubmed", "datacite", "europepmc", "doaj",
 		"internet_archive", "commoncrawl",
 	}
@@ -209,24 +209,6 @@ func (a HTTPAdapter) searchWeb(ctx context.Context, req capability.SearchRequest
 		var out []capability.SearchResult
 		for i, r := range raw.Organic {
 			out = append(out, result(a.id, i, r.URL, r.Title, r.Snippet, "web"))
-		}
-		return out, nil
-	case "google_cse":
-		key, _ := a.creds.Get("google_cse", "GOOGLE_CSE_API_KEY")
-		cx, _ := a.creds.GetField("google_cse", "cx", "GOOGLE_CSE_CX")
-		if cx.Value == "" {
-			return nil, ProviderError{Code: "auth_missing", Message: "GOOGLE_CSE_CX missing"}
-		}
-		u := "https://www.googleapis.com/customsearch/v1?key=" + url.QueryEscape(key.Value) + "&cx=" + url.QueryEscape(cx.Value) + "&q=" + url.QueryEscape(q)
-		var raw struct {
-			Items []struct{ Title, Link, Snippet string } `json:"items"`
-		}
-		if err := a.getJSON(ctx, u, nil, &raw); err != nil {
-			return nil, err
-		}
-		var out []capability.SearchResult
-		for i, r := range raw.Items {
-			out = append(out, result(a.id, i, r.Link, r.Title, r.Snippet, "web"))
 		}
 		return out, nil
 	default:

@@ -21,7 +21,6 @@ Non-interactive credential setup:
 ```powershell
 "<api-key>" | forage credentials set brave --value-stdin
 forage credentials set brave --from-env BRAVE_API_KEY
-forage credentials set google_cse --field cx --from-env GOOGLE_CSE_CX
 forage credentials list
 forage credentials check brave
 forage credentials remove brave
@@ -41,7 +40,7 @@ forage providers doctor --all --json
 
 No credentials are needed for Hacker News, GDELT, Semantic Scholar public endpoints, Crossref, arXiv, DataCite, Wikidata, Internet Archive, Common Crawl, Forem, DOAJ, or Europe PMC.
 
-Blogger and WordPress API endpoints are intentionally excluded from the v0.1 provider setup. Diffbot and ScraperAPI are also excluded because they do not fit the recurring-free provider policy.
+Blogger, WordPress API endpoints, Reddit, Google Custom Search, Diffbot, and ScraperAPI are intentionally excluded from the v0.1 provider setup.
 
 ## Health and Quota
 

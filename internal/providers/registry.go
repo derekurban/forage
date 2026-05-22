@@ -52,7 +52,6 @@ func Registry() []Provider {
 		{ID: "hackernews", Name: "Hacker News API", Category: "platform", Capabilities: []string{"search.platform"}, AuthType: AuthNone, SetupURL: "https://github.com/HackerNews/API", FreeTier: "Free public API", LimitModel: "no documented current rate limit", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "crossref", Name: "Crossref REST API", Category: "scholarly", Capabilities: []string{"search.scholar", "enrich.citations"}, AuthType: AuthNone, SetupURL: "https://www.crossref.org/documentation/retrieve-metadata/rest-api/", FreeTier: "Free public REST API", LimitModel: "headers expose current limits; polite pool with mailto", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "arxiv", Name: "arXiv API", Category: "scholarly", Capabilities: []string{"search.scholar"}, AuthType: AuthNone, SetupURL: "https://info.arxiv.org/help/api/index.html", FreeTier: "Free public API", LimitModel: "3 second delay between requests", LimitConfidence: "documented", Status: CapabilitySupported},
-		{ID: "google_cse", Name: "Google Custom Search JSON API", Category: "web search", Capabilities: []string{"search.web"}, AuthType: AuthAPIKey, EnvVar: "GOOGLE_CSE_API_KEY", SetupURL: "https://developers.google.com/custom-search/v1/overview", FreeTier: "Legacy existing-customer free quota only; closed to new customers", LimitModel: "daily queries", LimitConfidence: "documented", Status: LegacyOptional},
 		{ID: "serpapi", Name: "SerpApi", Category: "SERP", Capabilities: []string{"search.web", "search.news", "search.scholar"}, AuthType: AuthAPIKey, EnvVar: "SERPAPI_API_KEY", SetupURL: "https://serpapi.com/", FreeTier: "250 searches/month", LimitModel: "monthly searches + hourly throughput", LimitConfidence: "documented", Status: MetadataOnly},
 		{ID: "serpstack", Name: "serpstack", Category: "SERP", Capabilities: []string{"search.web"}, AuthType: AuthAPIKey, EnvVar: "SERPSTACK_API_KEY", SetupURL: "https://serpstack.com/", FreeTier: "100 searches/month", LimitModel: "monthly searches", LimitConfidence: "documented", Status: MetadataOnly},
 		{ID: "firecrawl", Name: "Firecrawl", Category: "extraction/crawl", Capabilities: []string{"fetch.url", "extract.article", "crawl.site"}, AuthType: AuthAPIKey, EnvVar: "FIRECRAWL_API_KEY", SetupURL: "https://www.firecrawl.dev/", FreeTier: "1,000 credits/month", LimitModel: "monthly credits + concurrency", LimitConfidence: "documented", Status: CapabilitySupported},
@@ -80,7 +79,6 @@ func Registry() []Provider {
 		{ID: "mediastack", Name: "Mediastack", Category: "news", Capabilities: []string{"search.news"}, AuthType: AuthAPIKey, EnvVar: "MEDIASTACK_API_KEY", SetupURL: "https://mediastack.com/", FreeTier: "100 calls/month", LimitModel: "monthly calls", LimitConfidence: "documented", Status: MetadataOnly},
 		{ID: "worldnews", Name: "World News API", Category: "news", Capabilities: []string{"search.news"}, AuthType: AuthAPIKey, EnvVar: "WORLDNEWS_API_KEY", SetupURL: "https://worldnewsapi.com/", FreeTier: "50 points/day", LimitModel: "daily points", LimitConfidence: "documented", Status: MetadataOnly},
 		{ID: "forem", Name: "Forem / DEV API", Category: "platform", Capabilities: []string{"search.platform"}, AuthType: AuthNone, SetupURL: "https://developers.forem.com/api/v1", FreeTier: "Free public API", LimitModel: "unknown", LimitConfidence: "unknown", Status: CapabilitySupported},
-		{ID: "reddit", Name: "Reddit Data API", Category: "platform", Capabilities: []string{"search.platform"}, AuthType: AuthOAuth, EnvVar: "REDDIT_CLIENT_ID", SetupURL: "https://www.reddit.com/prefs/apps", FreeTier: "100 QPM per OAuth client ID for eligible apps", LimitModel: "QPM per OAuth app", LimitConfidence: "documented", Status: MetadataOnly},
 	})
 }
 
@@ -115,17 +113,6 @@ func setupGroup(p Provider) string {
 
 func credentialFields(p Provider) []CredentialField {
 	switch p.ID {
-	case "google_cse":
-		return []CredentialField{
-			{Name: "api_key", EnvVar: "GOOGLE_CSE_API_KEY", Secret: true, Required: true, Description: "Google Custom Search API key"},
-			{Name: "cx", EnvVar: "GOOGLE_CSE_CX", Secret: false, Required: true, Description: "Programmable Search Engine ID"},
-		}
-	case "reddit":
-		return []CredentialField{
-			{Name: "client_id", EnvVar: "REDDIT_CLIENT_ID", Secret: false, Required: true, Description: "Reddit OAuth client ID"},
-			{Name: "client_secret", EnvVar: "REDDIT_CLIENT_SECRET", Secret: true, Required: true, Description: "Reddit OAuth client secret"},
-			{Name: "user_agent", EnvVar: "REDDIT_USER_AGENT", Secret: false, Required: true, Description: "Reddit API user-agent"},
-		}
 	case "orcid":
 		return []CredentialField{
 			{Name: "client_id", EnvVar: "ORCID_CLIENT_ID", Secret: false, Required: true, Description: "ORCID public API client ID"},
