@@ -44,7 +44,7 @@ type CredentialField struct {
 
 func Registry() []Provider {
 	return withDerivedMetadata([]Provider{
-		{ID: "brave", Name: "Brave Search API", Category: "web search", Capabilities: []string{"search.web", "search.news", "search.images"}, AuthType: AuthAPIKey, EnvVar: "BRAVE_API_KEY", SetupURL: "https://api-dashboard.search.brave.com/", FreeTier: "$5 free credits monthly", LimitModel: "monthly credits + endpoint request cost", LimitConfidence: "documented", Status: CapabilitySupported},
+		{ID: "brave", Name: "Brave Search API", Category: "web search", Capabilities: []string{"search.web", "search.news", "search.images", "answers.llm"}, AuthType: AuthAPIKey, EnvVar: "BRAVE_SEARCH_API_KEY", SetupURL: "https://api-dashboard.search.brave.com/", FreeTier: "$5 free credits monthly", LimitModel: "monthly credits + endpoint request cost", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "exa", Name: "Exa", Category: "AI-native search", Capabilities: []string{"search.web", "extract.article"}, AuthType: AuthAPIKey, EnvVar: "EXA_API_KEY", SetupURL: "https://dashboard.exa.ai/", FreeTier: "1,000 requests/month free", LimitModel: "monthly requests", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "tavily", Name: "Tavily", Category: "AI search", Capabilities: []string{"search.web"}, AuthType: AuthAPIKey, EnvVar: "TAVILY_API_KEY", SetupURL: "https://app.tavily.com/", FreeTier: "1,000 API credits/month free", LimitModel: "monthly credits", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "jina", Name: "Jina Reader/Search", Category: "search/extraction", Capabilities: []string{"search.web", "extract.article", "fetch.url"}, AuthType: AuthAPIKey, OptionalAuth: true, EnvVar: "JINA_API_KEY", SetupURL: "https://jina.ai/reader/", FreeTier: "Reader 500 RPM with key; search 100 RPM; lower no-key limits", LimitModel: "RPM + token quota", LimitConfidence: "documented", Status: CapabilitySupported},
@@ -52,6 +52,7 @@ func Registry() []Provider {
 		{ID: "hackernews", Name: "Hacker News API", Category: "platform", Capabilities: []string{"search.platform"}, AuthType: AuthNone, SetupURL: "https://github.com/HackerNews/API", FreeTier: "Free public API", LimitModel: "no documented current rate limit", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "crossref", Name: "Crossref REST API", Category: "scholarly", Capabilities: []string{"search.scholar", "enrich.citations"}, AuthType: AuthNone, SetupURL: "https://www.crossref.org/documentation/retrieve-metadata/rest-api/", FreeTier: "Free public REST API", LimitModel: "headers expose current limits; polite pool with mailto", LimitConfidence: "documented", Status: CapabilitySupported},
 		{ID: "arxiv", Name: "arXiv API", Category: "scholarly", Capabilities: []string{"search.scholar"}, AuthType: AuthNone, SetupURL: "https://info.arxiv.org/help/api/index.html", FreeTier: "Free public API", LimitModel: "3 second delay between requests", LimitConfidence: "documented", Status: CapabilitySupported},
+		{ID: "google_cse", Name: "Google Custom Search JSON API", Category: "web search", Capabilities: []string{"search.web"}, AuthType: AuthAPIKey, EnvVar: "GOOGLE_CSE_API_KEY", SetupURL: "https://developers.google.com/custom-search/v1/overview", FreeTier: "Legacy existing-customer free quota only; search engine ID is not configured in v0.1", LimitModel: "daily queries", LimitConfidence: "documented", Status: LegacyOptional},
 		{ID: "serpapi", Name: "SerpApi", Category: "SERP", Capabilities: []string{"search.web", "search.news", "search.scholar"}, AuthType: AuthAPIKey, EnvVar: "SERPAPI_API_KEY", SetupURL: "https://serpapi.com/", FreeTier: "250 searches/month", LimitModel: "monthly searches + hourly throughput", LimitConfidence: "documented", Status: MetadataOnly},
 		{ID: "serpstack", Name: "serpstack", Category: "SERP", Capabilities: []string{"search.web"}, AuthType: AuthAPIKey, EnvVar: "SERPSTACK_API_KEY", SetupURL: "https://serpstack.com/", FreeTier: "100 searches/month", LimitModel: "monthly searches", LimitConfidence: "documented", Status: MetadataOnly},
 		{ID: "firecrawl", Name: "Firecrawl", Category: "extraction/crawl", Capabilities: []string{"fetch.url", "extract.article", "crawl.site"}, AuthType: AuthAPIKey, EnvVar: "FIRECRAWL_API_KEY", SetupURL: "https://www.firecrawl.dev/", FreeTier: "1,000 credits/month", LimitModel: "monthly credits + concurrency", LimitConfidence: "documented", Status: CapabilitySupported},
@@ -113,6 +114,11 @@ func setupGroup(p Provider) string {
 
 func credentialFields(p Provider) []CredentialField {
 	switch p.ID {
+	case "brave":
+		return []CredentialField{
+			{Name: "search_api_key", EnvVar: "BRAVE_SEARCH_API_KEY", Secret: true, Required: true, Description: "Brave Search API key for web/news/image search"},
+			{Name: "answers_api_key", EnvVar: "BRAVE_ANSWERS_API_KEY", Secret: true, Required: false, Description: "Brave Answers API key for future LLM answer endpoints"},
+		}
 	case "orcid":
 		return []CredentialField{
 			{Name: "client_id", EnvVar: "ORCID_CLIENT_ID", Secret: false, Required: true, Description: "ORCID public API client ID"},

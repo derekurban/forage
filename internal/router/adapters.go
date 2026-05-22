@@ -94,7 +94,7 @@ func (a HTTPAdapter) searchWeb(ctx context.Context, req capability.SearchRequest
 	}
 	switch a.id {
 	case "brave":
-		key, _ := a.creds.Get("brave", "BRAVE_API_KEY")
+		key, _ := a.creds.GetField("brave", "search_api_key", "BRAVE_SEARCH_API_KEY")
 		u := "https://api.search.brave.com/res/v1/web/search?q=" + url.QueryEscape(q) + "&count=" + fmt.Sprint(limit(req.Limit))
 		h := map[string]string{"X-Subscription-Token": key.Value, "Accept": "application/json"}
 		var raw struct {

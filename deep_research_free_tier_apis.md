@@ -375,7 +375,7 @@ Each provider should have a local quota record:
 providers:
   brave:
     enabled: true
-    auth_env: BRAVE_API_KEY
+    auth_env: BRAVE_SEARCH_API_KEY
     limits:
       monthly_credits: 5.00
       request_cost:
@@ -544,7 +544,7 @@ The doctor command should check:
 
 | Check | Example output |
 |---|---|
-| API key presence | `brave: configured via BRAVE_API_KEY` |
+| API key presence | `brave: configured via BRAVE_SEARCH_API_KEY` |
 | Minimal request works | `jina_reader: ok, 312 ms` |
 | Quota headers parsed | `serpapi: 248 monthly searches remaining` |
 | Policy compatibility | `guardian: disabled under commercial profile without custom terms` |

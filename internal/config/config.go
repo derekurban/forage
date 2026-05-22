@@ -77,6 +77,7 @@ func Default() Config {
 			"direct":           {Enabled: true},
 			"serpapi":          {Enabled: true},
 			"serpstack":        {Enabled: true},
+			"google_cse":       {Enabled: false},
 			"firecrawl":        {Enabled: true},
 			"scrapingant":      {Enabled: true},
 			"apify":            {Enabled: true},
