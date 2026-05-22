@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.4
+
+- Sanitized OpenAlex quota preflight observations so provider diagnostic output never stores or emits API key fields from provider response bodies.
+
 ## v0.1.3
 
 - Routed archive, enrichment, citations, corpus, render, crawl, and map commands through the shared provider router.

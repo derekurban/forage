@@ -68,7 +68,8 @@ func (s Service) preflightOpenAlex(ctx context.Context, p providers.Provider) Re
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-	ps := state.ProviderState{Provider: p.ID, Status: "healthy", LastCheckedAt: time.Now().UTC().Format(time.RFC3339), LastHTTPStatus: &resp.StatusCode, Observed: string(body)}
+	observed := sanitizeObservedJSON(body)
+	ps := state.ProviderState{Provider: p.ID, Status: "healthy", LastCheckedAt: time.Now().UTC().Format(time.RFC3339), LastHTTPStatus: &resp.StatusCode, Observed: observed}
 	if resp.StatusCode == http.StatusTooManyRequests {
 		ps.Status = "cooldown"
 		ps.Reason = "rate_limited"
@@ -151,4 +152,20 @@ func first(v string) string {
 		return strings.TrimSpace(v)
 	}
 	return strings.TrimSpace(parts[0])
+}
+
+func sanitizeObservedJSON(body []byte) string {
+	var raw map[string]any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return string(body)
+	}
+	delete(raw, "api_key")
+	delete(raw, "key")
+	delete(raw, "token")
+	delete(raw, "access_token")
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
 }

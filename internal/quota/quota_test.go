@@ -41,7 +41,7 @@ func TestOpenAlexPreflightPersistsQuota(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-RateLimit-Limit", "100")
 		w.Header().Set("X-RateLimit-Remaining", "87")
-		_, _ = w.Write([]byte(`{"daily_usage":13}`))
+		_, _ = w.Write([]byte(`{"api_key":"secret","daily_usage":13}`))
 	}))
 	defer ts.Close()
 	st, err := state.Open(filepath.Join(t.TempDir(), "state.db"))
@@ -63,6 +63,9 @@ func TestOpenAlexPreflightPersistsQuota(t *testing.T) {
 	}
 	if ps.Limit == nil || *ps.Limit != 100 || ps.Remaining == nil || *ps.Remaining != 87 || ps.Used == nil || *ps.Used != 13 {
 		t.Fatalf("quota state = %+v", ps)
+	}
+	if ps.Observed == "" || ps.Observed == `{"api_key":"secret","daily_usage":13}` {
+		t.Fatalf("observed was not sanitized: %s", ps.Observed)
 	}
 }
 
