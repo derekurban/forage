@@ -172,6 +172,51 @@ func TestHTTPAdapterFetchProviders(t *testing.T) {
 	}
 }
 
+func TestHTTPAdapterArchiveEnrichAndCorpusProviders(t *testing.T) {
+	tests := []struct {
+		name string
+		id   string
+		run  func(HTTPAdapter) error
+		body string
+	}{
+		{name: "internet_archive", id: "internet_archive", body: `{"archived_snapshots":{"closest":{"available":true,"url":"https://web.archive.org/x","timestamp":"20240101000000","status":"200"}}}`, run: func(a HTTPAdapter) error {
+			got, err := a.LookupArchive(context.Background(), "https://example.com", 1)
+			if err != nil {
+				return err
+			}
+			if len(got) != 1 || got[0].Provider != "internet_archive" {
+				t.Fatalf("archive = %+v", got)
+			}
+			return nil
+		}},
+		{name: "crossref_enrich", id: "crossref", body: `{"message":{"DOI":"10.1/x","title":["Paper"]}}`, run: func(a HTTPAdapter) error {
+			_, err := a.Enrich(context.Background(), capability.DataRequest{Capability: capability.EnrichDOI, ID: "10.1/x"})
+			return err
+		}},
+		{name: "commoncrawl_corpus", id: "commoncrawl", body: `[{"id":"CC-MAIN-2024-10","cdx-api":"https://index.example/","name":"Index"}]`, run: func(a HTTPAdapter) error {
+			_, err := a.Corpus(context.Background(), capability.DataRequest{Capability: capability.CorpusQuery, Query: "x"})
+			return err
+		}},
+		{name: "opencitations", id: "opencitations", body: `[{"citing":"x"}]`, run: func(a HTTPAdapter) error {
+			_, err := a.Citations(context.Background(), capability.DataRequest{Capability: capability.CitationsDOI, ID: "10.1/x"})
+			return err
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer ts.Close()
+			a := HTTPAdapter{id: tt.id, client: testClient(ts), creds: fakeCreds{}}
+			if err := tt.run(a); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestHTTPAdapterProviderFailures(t *testing.T) {
 	tests := []struct {
 		status int

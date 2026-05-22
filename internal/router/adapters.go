@@ -34,6 +34,7 @@ func DefaultAdapters(client *http.Client, creds credentials.Store) []Adapter {
 		"gdelt", "guardian", "currents", "gnews", "newsapi", "mediastack", "worldnews",
 		"hackernews", "forem",
 		"openalex", "semantic_scholar", "crossref", "arxiv", "pubmed", "datacite", "europepmc", "doaj",
+		"opencitations", "orcid", "unpaywall", "wikidata",
 		"internet_archive", "commoncrawl",
 	}
 	var out []Adapter
@@ -85,6 +86,233 @@ func (a HTTPAdapter) Fetch(ctx context.Context, req capability.FetchRequest) (ca
 
 func (a HTTPAdapter) Extract(ctx context.Context, req capability.ExtractRequest) (capability.ExtractedDocument, error) {
 	return a.Fetch(ctx, capability.FetchRequest{URL: req.URL, CacheMode: req.CacheMode, ExplainRouting: req.ExplainRouting})
+}
+
+func (a HTTPAdapter) LookupArchive(ctx context.Context, target string, limit int) ([]capability.ArchiveRecord, error) {
+	switch a.id {
+	case "internet_archive":
+		var raw struct {
+			ArchivedSnapshots struct {
+				Closest struct {
+					Available bool   `json:"available"`
+					URL       string `json:"url"`
+					Timestamp string `json:"timestamp"`
+					Status    string `json:"status"`
+				} `json:"closest"`
+			} `json:"archived_snapshots"`
+		}
+		u := "https://archive.org/wayback/available?url=" + url.QueryEscape(target)
+		if err := a.getJSON(ctx, u, nil, &raw); err != nil {
+			return nil, err
+		}
+		c := raw.ArchivedSnapshots.Closest
+		if !c.Available && c.URL == "" {
+			return nil, ProviderError{Code: "not_found", Message: "no archived snapshot found"}
+		}
+		return []capability.ArchiveRecord{{URL: target, ArchiveURL: c.URL, Timestamp: c.Timestamp, Status: c.Status, Provider: a.id}}, nil
+	case "commoncrawl":
+		var indexes []struct {
+			ID       string `json:"id"`
+			APIURL   string `json:"cdx-api"`
+			Name     string `json:"name"`
+			Timegate string `json:"timegate"`
+		}
+		if err := a.getJSON(ctx, "https://index.commoncrawl.org/collinfo.json", nil, &indexes); err != nil {
+			return nil, err
+		}
+		if len(indexes) == 0 {
+			return nil, ProviderError{Code: "not_found", Message: "no Common Crawl indexes found"}
+		}
+		max := limit
+		if max <= 0 || max > len(indexes) {
+			max = len(indexes)
+		}
+		var out []capability.ArchiveRecord
+		for _, idx := range indexes[:max] {
+			out = append(out, capability.ArchiveRecord{URL: target, ArchiveURL: idx.APIURL, Timestamp: idx.ID, Status: idx.Name, Provider: a.id})
+		}
+		return out, nil
+	default:
+		return nil, ProviderError{Code: "unsupported_capability", Message: "archive lookup unsupported"}
+	}
+}
+
+func (a HTTPAdapter) Enrich(ctx context.Context, req capability.DataRequest) (any, error) {
+	switch req.Capability {
+	case capability.EnrichDOI:
+		return a.enrichDOI(ctx, req.ID)
+	case capability.EnrichPaper:
+		return a.enrichPaper(ctx, req.ID)
+	case capability.EnrichAuthor:
+		return a.enrichAuthor(ctx, req.ID)
+	default:
+		return nil, ProviderError{Code: "unsupported_capability", Message: "enrichment unsupported"}
+	}
+}
+
+func (a HTTPAdapter) Citations(ctx context.Context, req capability.DataRequest) (any, error) {
+	doi := req.ID
+	if doi == "" {
+		doi = req.Query
+	}
+	switch a.id {
+	case "opencitations":
+		token, _ := a.creds.Get("opencitations", "OPENCITATIONS_ACCESS_TOKEN")
+		headers := map[string]string{}
+		if strings.TrimSpace(token.Value) != "" {
+			headers["authorization"] = token.Value
+		}
+		var raw any
+		if err := a.getJSON(ctx, "https://opencitations.net/index/api/v1/citations/"+url.PathEscape(doi), headers, &raw); err != nil {
+			return nil, err
+		}
+		return map[string]any{"provider": a.id, "doi": doi, "citations": raw}, nil
+	case "crossref":
+		raw, err := a.enrichDOI(ctx, doi)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"provider": a.id, "doi": doi, "work": raw}, nil
+	default:
+		return nil, ProviderError{Code: "unsupported_capability", Message: "citations unsupported"}
+	}
+}
+
+func (a HTTPAdapter) Corpus(ctx context.Context, req capability.DataRequest) (any, error) {
+	switch a.id {
+	case "commoncrawl":
+		var raw any
+		if err := a.getJSON(ctx, "https://index.commoncrawl.org/collinfo.json", nil, &raw); err != nil {
+			return nil, err
+		}
+		return map[string]any{"provider": a.id, "query": req.Query, "indexes": raw}, nil
+	case "gdelt":
+		return a.searchNews(ctx, capability.SearchRequest{Query: req.Query, Capability: capability.SearchNews, Limit: req.Limit})
+	case "internet_archive":
+		return map[string]any{"provider": a.id, "query": req.Query, "status": "use archive lookup URL for URL-specific Wayback availability"}, nil
+	default:
+		return nil, ProviderError{Code: "unsupported_capability", Message: "corpus query unsupported"}
+	}
+}
+
+func (a HTTPAdapter) Render(ctx context.Context, req capability.FetchRequest) (capability.ExtractedDocument, error) {
+	switch a.id {
+	case "scrapingant", "browserbase":
+		doc, err := a.Fetch(ctx, req)
+		if err != nil {
+			return capability.ExtractedDocument{}, err
+		}
+		doc.ExtractionMethod = "render_" + doc.ExtractionMethod
+		return doc, nil
+	default:
+		return capability.ExtractedDocument{}, ProviderError{Code: "unsupported_capability", Message: "browser rendering unsupported"}
+	}
+}
+
+func (a HTTPAdapter) Crawl(ctx context.Context, target string, maxPages int) ([]capability.ExtractedDocument, error) {
+	if maxPages <= 0 {
+		maxPages = 10
+	}
+	switch a.id {
+	case "direct":
+		return a.localCrawl(ctx, target, maxPages)
+	case "firecrawl":
+		key, _ := a.creds.Get("firecrawl", "FIRECRAWL_API_KEY")
+		body := map[string]any{"url": target, "limit": maxPages, "scrapeOptions": map[string]any{"formats": []string{"markdown", "html"}}}
+		var raw struct {
+			Success bool `json:"success"`
+			Data    []struct {
+				Markdown string         `json:"markdown"`
+				HTML     string         `json:"html"`
+				Metadata map[string]any `json:"metadata"`
+			} `json:"data"`
+		}
+		if err := a.postJSON(ctx, "https://api.firecrawl.dev/v1/crawl", map[string]string{"Authorization": "Bearer " + key.Value}, body, &raw); err != nil {
+			return nil, err
+		}
+		var out []capability.ExtractedDocument
+		for _, item := range raw.Data {
+			u, _ := item.Metadata["sourceURL"].(string)
+			md := item.Markdown
+			out = append(out, capability.ExtractedDocument{URL: u, RetrievedAt: time.Now().UTC(), Markdown: md, HTML: item.HTML, PlainText: stripMarkdown(md), Provider: a.id, ExtractionMethod: "firecrawl_crawl", QualityScore: quality(md), ContentHash: hash(md), Raw: item.Metadata})
+		}
+		if len(out) == 0 {
+			return nil, ProviderError{Code: "not_found", Message: "crawl returned no documents"}
+		}
+		return out, nil
+	default:
+		return nil, ProviderError{Code: "unsupported_capability", Message: "crawl unsupported"}
+	}
+}
+
+func (a HTTPAdapter) enrichDOI(ctx context.Context, doi string) (any, error) {
+	switch a.id {
+	case "crossref":
+		var raw any
+		if err := a.getJSON(ctx, "https://api.crossref.org/works/"+url.PathEscape(doi), map[string]string{"User-Agent": "forage/0.1"}, &raw); err != nil {
+			return nil, err
+		}
+		return map[string]any{"provider": a.id, "doi": doi, "work": raw}, nil
+	case "openalex":
+		return a.enrichPaper(ctx, "doi:"+doi)
+	case "unpaywall":
+		email, _ := a.creds.GetField("unpaywall", "email", "UNPAYWALL_EMAIL")
+		var raw any
+		u := "https://api.unpaywall.org/v2/" + url.PathEscape(doi) + "?email=" + url.QueryEscape(email.Value)
+		if err := a.getJSON(ctx, u, nil, &raw); err != nil {
+			return nil, err
+		}
+		return map[string]any{"provider": a.id, "doi": doi, "open_access": raw}, nil
+	default:
+		return nil, ProviderError{Code: "unsupported_capability", Message: "DOI enrichment unsupported"}
+	}
+}
+
+func (a HTTPAdapter) enrichPaper(ctx context.Context, id string) (any, error) {
+	switch a.id {
+	case "openalex":
+		key, _ := a.creds.Get("openalex", "OPENALEX_API_KEY")
+		endpoint := "https://api.openalex.org/works/" + url.PathEscape(id)
+		if strings.HasPrefix(strings.ToLower(id), "10.") {
+			endpoint = "https://api.openalex.org/works/doi:" + url.PathEscape(id)
+		}
+		if key.Value != "" {
+			sep := "?"
+			if strings.Contains(endpoint, "?") {
+				sep = "&"
+			}
+			endpoint += sep + "api_key=" + url.QueryEscape(key.Value)
+		}
+		var raw any
+		if err := a.getJSON(ctx, endpoint, nil, &raw); err != nil {
+			return nil, err
+		}
+		return map[string]any{"provider": a.id, "id": id, "work": raw}, nil
+	case "semantic_scholar":
+		var raw any
+		u := "https://api.semanticscholar.org/graph/v1/paper/" + url.PathEscape(id) + "?fields=title,abstract,url,year,externalIds,citationCount,referenceCount"
+		if err := a.getJSON(ctx, u, nil, &raw); err != nil {
+			return nil, err
+		}
+		return map[string]any{"provider": a.id, "id": id, "paper": raw}, nil
+	default:
+		return nil, ProviderError{Code: "unsupported_capability", Message: "paper enrichment unsupported"}
+	}
+}
+
+func (a HTTPAdapter) enrichAuthor(ctx context.Context, id string) (any, error) {
+	switch a.id {
+	case "orcid":
+		return map[string]any{"provider": a.id, "orcid": id, "url": "https://orcid.org/" + id, "status": "link_only"}, nil
+	case "openalex":
+		var raw any
+		if err := a.getJSON(ctx, "https://api.openalex.org/authors/"+url.PathEscape(id), nil, &raw); err != nil {
+			return nil, err
+		}
+		return map[string]any{"provider": a.id, "id": id, "author": raw}, nil
+	default:
+		return nil, ProviderError{Code: "unsupported_capability", Message: "author enrichment unsupported"}
+	}
 }
 
 func (a HTTPAdapter) searchWeb(ctx context.Context, req capability.SearchRequest) ([]capability.SearchResult, error) {
@@ -869,6 +1097,61 @@ func parseArxiv(txt, provider string) []capability.ScholarWork {
 			id = strings.TrimSpace(m[1])
 		}
 		out = append(out, capability.ScholarWork{ID: id, Title: title, URL: id, Provider: provider})
+	}
+	return out
+}
+
+func (a HTTPAdapter) localCrawl(ctx context.Context, start string, maxPages int) ([]capability.ExtractedDocument, error) {
+	base, err := url.Parse(start)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	queue := []string{start}
+	var docs []capability.ExtractedDocument
+	for len(queue) > 0 && len(docs) < maxPages {
+		u := queue[0]
+		queue = queue[1:]
+		if seen[u] {
+			continue
+		}
+		seen[u] = true
+		doc, err := a.directFetch(ctx, u)
+		if err != nil {
+			continue
+		}
+		docs = append(docs, doc)
+		for _, link := range extractLinks(doc.HTML, u) {
+			parsed, err := url.Parse(link)
+			if err != nil || parsed.Hostname() != base.Hostname() || seen[link] {
+				continue
+			}
+			queue = append(queue, link)
+		}
+	}
+	if len(docs) == 0 {
+		return nil, ProviderError{Code: "not_found", Message: "crawl returned no documents"}
+	}
+	return docs, nil
+}
+
+func extractLinks(htmlText string, baseURL string) []string {
+	base, _ := url.Parse(baseURL)
+	re := regexp.MustCompile(`(?i)href=["']([^"'#]+)["']`)
+	seen := map[string]bool{}
+	var out []string
+	for _, m := range re.FindAllStringSubmatch(htmlText, -1) {
+		ref, err := url.Parse(strings.TrimSpace(m[1]))
+		if err != nil {
+			continue
+		}
+		abs := base.ResolveReference(ref)
+		abs.Fragment = ""
+		u := abs.String()
+		if strings.HasPrefix(u, "http") && !seen[u] {
+			seen[u] = true
+			out = append(out, u)
+		}
 	}
 	return out
 }

@@ -56,7 +56,7 @@ Forage tracks quota in three tiers:
 | Tracking mode | Providers | What Forage can do |
 | --- | --- | --- |
 | Response headers | Brave, Browserbase, OpenAlex, PubMed, Guardian, World News API, Crossref when headers appear | Persist observed limit, remaining, reset, retry, and provider status |
-| Provider endpoint | OpenAlex | Preflight/check account quota with `/rate-limit` once wired into doctor/quota commands |
-| Manual/inferred | Tavily, Exa, Firecrawl, Jina, GNews, NewsAPI, Currents, Mediastack, SerpApi, serpstack, Semantic Scholar, public/free APIs | Track local attempts, successes, 429s, failures, and documented manual limits |
+| Provider endpoint | OpenAlex | Preflight/check account quota with `forage providers quota --preflight --provider openalex` |
+| Manual/inferred | Tavily, Exa, Firecrawl, Jina, GNews, NewsAPI, Currents, Mediastack, SerpApi, serpstack, Semantic Scholar, public/free APIs | Track local attempts, successes, 429s, failures, and documented manual limits; skip providers when local request budget is exhausted |
 
 Sources used for quota behavior include Brave rate-limit headers, Browserbase `RateLimit-*` headers, OpenAlex `X-RateLimit-*` headers and `/rate-limit`, Exa QPS docs, Firecrawl 429 behavior, World News API quota headers, Serpstack usage-limit error bodies, and Semantic Scholar public/authenticated rate notes.

@@ -111,6 +111,13 @@ func Default() Config {
 			"extract.article": {"jina", "browserbase", "firecrawl", "scrapingant", "apify", "direct"},
 			"fetch.url":       {"jina", "browserbase", "firecrawl", "scrapingant", "direct"},
 			"archive.lookup":  {"internet_archive", "commoncrawl", "gdelt"},
+			"enrich.doi":      {"crossref", "unpaywall", "openalex"},
+			"enrich.paper":    {"openalex", "semantic_scholar"},
+			"enrich.author":   {"orcid", "openalex", "wikidata"},
+			"citations.doi":   {"opencitations", "crossref", "openalex", "semantic_scholar"},
+			"corpus.query":    {"commoncrawl", "gdelt", "internet_archive"},
+			"render.browser":  {"browserbase", "scrapingant", "browserless", "apify"},
+			"crawl.site":      {"firecrawl", "apify", "direct"},
 		},
 		Cache: CacheConfig{Database: DBPath(), Mode: "auto", TTLHours: 24},
 	}

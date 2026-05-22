@@ -40,7 +40,7 @@ forage providers doctor --all --json
 
 `.env` is repo-local, gitignored, and loaded before credential checks. Existing process environment variables win over values from `.env`.
 
-No credentials are needed for Hacker News, Semantic Scholar public endpoints, Crossref, arXiv, DataCite, Wikidata, Internet Archive, Common Crawl, Forem, DOAJ, or Europe PMC. GDELT is registered as metadata-only until its public endpoint is reliable from the Windows release environment.
+No credentials are needed for Hacker News, Crossref, arXiv, DataCite, Wikidata, Internet Archive, Common Crawl, Forem, DOAJ, or Europe PMC. Semantic Scholar and GDELT are registered as metadata-only until their public endpoints are reliable from the Windows release environment.
 
 Blogger, WordPress API endpoints, Reddit, Google Custom Search, Diffbot, ScraperAPI, and Europeana are intentionally excluded from the v0.1 provider setup.
 
@@ -56,6 +56,7 @@ forage providers doctor --capability search.web
 forage providers doctor --all
 forage providers quota
 forage providers quota --provider brave
+forage providers quota --preflight --provider openalex
 forage providers quota --reset-local brave
 ```
 
@@ -112,7 +113,7 @@ forage research-pack "machine learning" --json
 forage evidence inspect .forage/evidence/<id>.json --json
 ```
 
-You can also create a pack from JSON stdin:
+You can also create a pack from JSON or JSONL stdin:
 
 ```powershell
 forage search scholar "machine learning" --json | forage evidence create --query "machine learning" --json

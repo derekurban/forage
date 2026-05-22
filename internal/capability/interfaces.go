@@ -32,6 +32,21 @@ type ArchiveProvider interface {
 	LookupArchive(ctx context.Context, url string, limit int) ([]ArchiveRecord, error)
 }
 
+type EnrichmentProvider interface {
+	ID() string
+	Enrich(ctx context.Context, req DataRequest) (any, error)
+}
+
+type CitationProvider interface {
+	ID() string
+	Citations(ctx context.Context, req DataRequest) (any, error)
+}
+
+type CorpusProvider interface {
+	ID() string
+	Corpus(ctx context.Context, req DataRequest) (any, error)
+}
+
 type RenderProvider interface {
 	ID() string
 	Render(ctx context.Context, req FetchRequest) (ExtractedDocument, error)

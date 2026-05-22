@@ -49,6 +49,13 @@ type ProviderAttempt struct {
 	FinishedAt string `json:"finished_at,omitempty"`
 }
 
+type ProviderUsage struct {
+	Provider     string `json:"provider"`
+	WindowStart  string `json:"window_start"`
+	WindowEnd    string `json:"window_end"`
+	RequestCount int64  `json:"request_count"`
+}
+
 func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
@@ -118,6 +125,12 @@ CREATE TABLE IF NOT EXISTS provider_attempts(
   reason TEXT,
   started_at TEXT NOT NULL,
   finished_at TEXT
+);
+CREATE TABLE IF NOT EXISTS provider_usage(
+  provider TEXT PRIMARY KEY,
+  window_start TEXT NOT NULL,
+  window_end TEXT NOT NULL,
+  request_count INTEGER NOT NULL
 );
 INSERT OR IGNORE INTO schema_migrations(version) VALUES(1);
 `)
@@ -297,8 +310,47 @@ func (s *Store) ProviderState(provider string) (ProviderState, bool, error) {
 }
 
 func (s *Store) ResetProviderState(provider string) error {
-	_, err := s.db.Exec(`DELETE FROM provider_state WHERE provider=?`, provider)
+	if _, err := s.db.Exec(`DELETE FROM provider_state WHERE provider=?`, provider); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`DELETE FROM provider_usage WHERE provider=?`, provider)
 	return err
+}
+
+func (s *Store) IncrementProviderUsage(provider string, window time.Duration) error {
+	if window <= 0 {
+		window = 24 * time.Hour
+	}
+	now := time.Now().UTC()
+	windowStart := now.Truncate(window)
+	windowEnd := windowStart.Add(window)
+	var existingStart string
+	var count int64
+	err := s.db.QueryRow(`SELECT window_start, request_count FROM provider_usage WHERE provider=?`, provider).Scan(&existingStart, &count)
+	if err == sql.ErrNoRows {
+		_, err = s.db.Exec(`INSERT INTO provider_usage(provider,window_start,window_end,request_count) VALUES(?,?,?,1)`,
+			provider, windowStart.Format(time.RFC3339), windowEnd.Format(time.RFC3339))
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	if existingStart != windowStart.Format(time.RFC3339) {
+		_, err = s.db.Exec(`UPDATE provider_usage SET window_start=?, window_end=?, request_count=1 WHERE provider=?`,
+			windowStart.Format(time.RFC3339), windowEnd.Format(time.RFC3339), provider)
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE provider_usage SET request_count=request_count+1 WHERE provider=?`, provider)
+	return err
+}
+
+func (s *Store) ProviderUsage(provider string) (ProviderUsage, bool, error) {
+	var u ProviderUsage
+	err := s.db.QueryRow(`SELECT provider,window_start,window_end,request_count FROM provider_usage WHERE provider=?`, provider).Scan(&u.Provider, &u.WindowStart, &u.WindowEnd, &u.RequestCount)
+	if err == sql.ErrNoRows {
+		return ProviderUsage{}, false, nil
+	}
+	return u, err == nil, err
 }
 
 func (s *Store) ClearCache() error {

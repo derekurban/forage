@@ -98,3 +98,13 @@ func TestProvidersListJSON(t *testing.T) {
 		t.Fatalf("envelope = %+v", env)
 	}
 }
+
+func TestParseEvidenceInputSupportsJSONL(t *testing.T) {
+	items, err := parseEvidenceInput([]byte("{\"url\":\"https://a.example\"}\n{\"url\":\"https://b.example\"}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("items = %+v", items)
+	}
+}

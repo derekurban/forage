@@ -10,6 +10,11 @@ const (
 	FetchURL       = "fetch.url"
 	ExtractArticle = "extract.article"
 	ArchiveLookup  = "archive.lookup"
+	EnrichDOI      = "enrich.doi"
+	EnrichPaper    = "enrich.paper"
+	EnrichAuthor   = "enrich.author"
+	CitationsDOI   = "citations.doi"
+	CorpusQuery    = "corpus.query"
 	RenderBrowser  = "render.browser"
 	CrawlSite      = "crawl.site"
 )
@@ -40,6 +45,27 @@ type ExtractRequest struct {
 	ExcludeProviders []string `json:"exclude_providers,omitempty"`
 	CacheMode        string   `json:"cache_mode"`
 	ExplainRouting   bool     `json:"explain_routing"`
+}
+
+type DataRequest struct {
+	Capability       string         `json:"capability"`
+	Query            string         `json:"query,omitempty"`
+	URL              string         `json:"url,omitempty"`
+	ID               string         `json:"id,omitempty"`
+	Providers        []string       `json:"providers,omitempty"`
+	ExcludeProviders []string       `json:"exclude_providers,omitempty"`
+	CacheMode        string         `json:"cache_mode"`
+	ExplainRouting   bool           `json:"explain_routing"`
+	Limit            int            `json:"limit,omitempty"`
+	MaxPages         int            `json:"max_pages,omitempty"`
+	Options          map[string]any `json:"options,omitempty"`
+}
+
+type DataResponse struct {
+	Capability  string              `json:"capability"`
+	Data        any                 `json:"data"`
+	Routing     *RoutingDiagnostics `json:"routing,omitempty"`
+	CacheStatus string              `json:"cache_status,omitempty"`
 }
 
 type SearchResponse struct {

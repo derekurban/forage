@@ -6,10 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -26,7 +23,7 @@ import (
 	"github.com/derekurban/forage/internal/evidence"
 	"github.com/derekurban/forage/internal/output"
 	"github.com/derekurban/forage/internal/providers"
-	"github.com/derekurban/forage/internal/remote"
+	"github.com/derekurban/forage/internal/quota"
 	"github.com/derekurban/forage/internal/router"
 	"github.com/derekurban/forage/internal/state"
 	"github.com/derekurban/forage/internal/version"
@@ -281,11 +278,12 @@ func (a *app) providersDoctorCmd() *cobra.Command {
 func (a *app) providersQuotaCmd() *cobra.Command {
 	var provider string
 	var reset string
+	var preflight bool
 	c := &cobra.Command{
 		Use:   "quota",
 		Short: "Show persisted provider quota and health state",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, st, cleanup, err := a.loadConfiguredState()
+			cfg, st, cleanup, err := a.loadConfiguredState()
 			if err != nil {
 				return err
 			}
@@ -295,6 +293,38 @@ func (a *app) providersQuotaCmd() *cobra.Command {
 					return err
 				}
 				return a.writeData(cmd, map[string]any{"reset": reset}, nil)
+			}
+			if preflight {
+				svc := quota.New(cfg, st, credentials.NewKeychainStore())
+				var results []quota.Result
+				if provider != "" {
+					results = append(results, svc.Preflight(cmd.Context(), provider))
+				} else {
+					for _, p := range providers.Sorted() {
+						if p.Quota.CanPreflight {
+							results = append(results, svc.Preflight(cmd.Context(), p.ID))
+						}
+					}
+				}
+				if a.opts.JSON || a.opts.JSONL {
+					return output.Write(cmd.OutOrStdout(), a.opts, cmd.CommandPath(), results, nil)
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), output.Heading(a.opts, "Provider quota preflight"))
+				t := table.NewWriter()
+				t.SetOutputMirror(cmd.OutOrStdout())
+				t.AppendHeader(table.Row{"Provider", "Status", "Message", "Remaining"})
+				for _, res := range results {
+					remaining := ""
+					if res.State.Remaining != nil {
+						remaining = fmt.Sprintf("%d", *res.State.Remaining)
+						if res.State.Limit != nil {
+							remaining = fmt.Sprintf("%d/%d", *res.State.Remaining, *res.State.Limit)
+						}
+					}
+					t.AppendRow(table.Row{res.Provider, output.Status(a.opts, res.Status), res.Message, remaining})
+				}
+				t.Render()
+				return nil
 			}
 			var states []state.ProviderState
 			if provider != "" {
@@ -344,6 +374,7 @@ func (a *app) providersQuotaCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&provider, "provider", "", "show one provider")
 	c.Flags().StringVar(&reset, "reset-local", "", "clear local quota state for provider")
+	c.Flags().BoolVar(&preflight, "preflight", false, "refresh quota from provider preflight endpoints where available")
 	return c
 }
 
@@ -474,22 +505,6 @@ func (a *app) writeData(cmd *cobra.Command, data any, diagnostics any) error {
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), string(b))
 	return nil
-}
-
-func (a *app) oldSearchStub() *cobra.Command {
-	return &cobra.Command{
-		Use:   "web QUERY",
-		Short: "Search the web",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if _, _, cleanup, err := a.loadConfiguredState(); err != nil {
-				return err
-			} else {
-				defer cleanup()
-			}
-			return apperr.New(apperr.CodeNotImplemented, "search.web command shape is available, but live search routing is not implemented in the foundation MVP.", apperr.ExitNoProvider)
-		},
-	}
 }
 
 func (a *app) fetchCmd() *cobra.Command {
@@ -686,18 +701,16 @@ func (a *app) credentialsCmd() *cobra.Command {
 func (a *app) archiveCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "archive", Short: "Archive lookup"}
 	cmd.AddCommand(&cobra.Command{Use: "lookup URL", Short: "Look up archived URL", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		u := "https://archive.org/wayback/available?url=" + url.QueryEscape(args[0])
-		resp, err := http.Get(u)
+		r, cleanup, err := a.router()
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
-		body, _ := io.ReadAll(resp.Body)
-		var raw any
-		if err := json.Unmarshal(body, &raw); err != nil {
-			raw = map[string]any{"url": args[0], "provider": "internet_archive", "status": resp.StatusCode, "body_preview": preview("", string(body))}
+		defer cleanup()
+		resp, ae := r.ArchiveLookup(cmd.Context(), capability.DataRequest{URL: args[0], CacheMode: "auto", ExplainRouting: a.opts.Verbose})
+		if ae != nil {
+			return ae
 		}
-		return a.writeData(cmd, raw, nil)
+		return a.writeData(cmd, resp, nil)
 	}})
 	return cmd
 }
@@ -730,32 +743,56 @@ func (a *app) runSearch(cmd *cobra.Command, cap, query string, include, exclude 
 func (a *app) enrichCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "enrich", Short: "Entity, DOI, and paper enrichment"}
 	cmd.AddCommand(&cobra.Command{Use: "doi DOI", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		raw, err := remote.CrossrefDOI(cmd.Context(), args[0])
+		r, cleanup, err := a.router()
 		if err != nil {
 			return err
 		}
-		return a.writeData(cmd, raw, nil)
+		defer cleanup()
+		resp, ae := r.EnrichDOI(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: "auto", ExplainRouting: a.opts.Verbose})
+		if ae != nil {
+			return ae
+		}
+		return a.writeData(cmd, resp, nil)
 	}})
 	cmd.AddCommand(&cobra.Command{Use: "paper ID_OR_DOI", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		raw, err := remote.OpenAlexWork(cmd.Context(), args[0])
+		r, cleanup, err := a.router()
 		if err != nil {
 			return err
 		}
-		return a.writeData(cmd, raw, nil)
+		defer cleanup()
+		resp, ae := r.EnrichPaper(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: "auto", ExplainRouting: a.opts.Verbose})
+		if ae != nil {
+			return ae
+		}
+		return a.writeData(cmd, resp, nil)
 	}})
 	cmd.AddCommand(&cobra.Command{Use: "author ORCID", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		return a.writeData(cmd, map[string]any{"orcid": args[0], "url": "https://orcid.org/" + args[0], "status": "link_only"}, nil)
+		r, cleanup, err := a.router()
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+		resp, ae := r.EnrichAuthor(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: "auto", ExplainRouting: a.opts.Verbose})
+		if ae != nil {
+			return ae
+		}
+		return a.writeData(cmd, resp, nil)
 	}})
 	return cmd
 }
 
 func (a *app) citationsCmd() *cobra.Command {
 	return &cobra.Command{Use: "citations DOI", Short: "Expand citation graph", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		raw, err := remote.OpenCitations(cmd.Context(), args[0], "citations")
+		r, cleanup, err := a.router()
 		if err != nil {
 			return err
 		}
-		return a.writeData(cmd, raw, nil)
+		defer cleanup()
+		resp, ae := r.Citations(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: "auto", ExplainRouting: a.opts.Verbose})
+		if ae != nil {
+			return ae
+		}
+		return a.writeData(cmd, resp, nil)
 	}}
 }
 
@@ -766,23 +803,42 @@ func (a *app) corpusCmd() *cobra.Command {
 		cmd.AddCommand(&cobra.Command{Use: n, Short: "Query " + n, RunE: func(cmd *cobra.Command, args []string) error {
 			switch n {
 			case "commoncrawl":
-				raw, err := remote.CommonCrawlIndexes(cmd.Context())
+				r, cleanup, err := a.router()
 				if err != nil {
 					return err
 				}
-				return a.writeData(cmd, raw, nil)
+				defer cleanup()
+				resp, ae := r.CorpusQuery(cmd.Context(), capability.DataRequest{Query: "indexes", Providers: []string{"commoncrawl"}, CacheMode: "auto", ExplainRouting: a.opts.Verbose})
+				if ae != nil {
+					return ae
+				}
+				return a.writeData(cmd, resp, nil)
 			case "gdelt":
 				query := "forage"
 				if len(args) > 0 {
 					query = strings.Join(args, " ")
 				}
-				raw, err := remote.GDELTDocs(cmd.Context(), query, 10)
+				r, cleanup, err := a.router()
 				if err != nil {
 					return err
 				}
-				return a.writeData(cmd, raw, nil)
+				defer cleanup()
+				resp, ae := r.CorpusQuery(cmd.Context(), capability.DataRequest{Query: query, Providers: []string{"gdelt"}, CacheMode: "auto", ExplainRouting: a.opts.Verbose, Limit: 10})
+				if ae != nil {
+					return ae
+				}
+				return a.writeData(cmd, resp, nil)
 			default:
-				return a.writeData(cmd, map[string]any{"corpus": n, "status": "use archive lookup URL for now"}, nil)
+				r, cleanup, err := a.router()
+				if err != nil {
+					return err
+				}
+				defer cleanup()
+				resp, ae := r.CorpusQuery(cmd.Context(), capability.DataRequest{Query: n, Providers: []string{n}, CacheMode: "auto", ExplainRouting: a.opts.Verbose})
+				if ae != nil {
+					return ae
+				}
+				return a.writeData(cmd, resp, nil)
 			}
 		}})
 	}
@@ -791,13 +847,12 @@ func (a *app) corpusCmd() *cobra.Command {
 
 func (a *app) renderCmd() *cobra.Command {
 	return &cobra.Command{Use: "render URL", Short: "Render a browser page", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, st, cleanup, err := a.loadConfiguredState()
+		r, cleanup, err := a.router()
 		if err != nil {
 			return err
 		}
 		defer cleanup()
-		r := router.New(cfg, st, credentials.NewKeychainStore())
-		resp, ae := r.Fetch(cmd.Context(), capability.FetchRequest{URL: args[0], Providers: []string{"scrapingant", "jina", "direct"}, ExplainRouting: a.opts.Verbose})
+		resp, ae := r.Render(cmd.Context(), capability.FetchRequest{URL: args[0], ExplainRouting: a.opts.Verbose, CacheMode: "auto"})
 		if ae != nil {
 			return ae
 		}
@@ -811,11 +866,16 @@ func (a *app) crawlCmd() *cobra.Command {
 		if maxPages <= 0 {
 			return fmt.Errorf("--max-pages must be greater than 0")
 		}
-		docs, err := a.localCrawl(cmd.Context(), args[0], maxPages)
+		r, cleanup, err := a.router()
 		if err != nil {
 			return err
 		}
-		return a.writeData(cmd, docs, nil)
+		defer cleanup()
+		resp, ae := r.Crawl(cmd.Context(), capability.DataRequest{URL: args[0], MaxPages: maxPages, CacheMode: "auto", ExplainRouting: a.opts.Verbose})
+		if ae != nil {
+			return ae
+		}
+		return a.writeData(cmd, resp, nil)
 	}}
 	c.Flags().IntVar(&maxPages, "max-pages", 10, "maximum pages to crawl")
 	return c
@@ -824,15 +884,23 @@ func (a *app) crawlCmd() *cobra.Command {
 func (a *app) mapCmd() *cobra.Command {
 	var maxPages int
 	c := &cobra.Command{Use: "map URL", Short: "Map same-domain URLs", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		docs, err := a.localCrawl(cmd.Context(), args[0], maxPages)
+		r, cleanup, err := a.router()
 		if err != nil {
 			return err
 		}
-		var urls []string
-		for _, d := range docs {
-			urls = append(urls, d.URL)
+		defer cleanup()
+		resp, ae := r.Crawl(cmd.Context(), capability.DataRequest{URL: args[0], MaxPages: maxPages, Providers: []string{"direct"}, CacheMode: "auto", ExplainRouting: a.opts.Verbose})
+		if ae != nil {
+			return ae
 		}
-		return a.writeData(cmd, map[string]any{"start_url": args[0], "urls": urls}, nil)
+		var urls []string
+		if docs, ok := resp.Data.([]capability.ExtractedDocument); ok {
+			for _, d := range docs {
+				urls = append(urls, d.URL)
+			}
+			resp.Data = map[string]any{"start_url": args[0], "urls": urls}
+		}
+		return a.writeData(cmd, resp, nil)
 	}}
 	c.Flags().IntVar(&maxPages, "max-pages", 25, "maximum pages to inspect")
 	return c
@@ -847,15 +915,9 @@ func (a *app) evidenceCmd() *cobra.Command {
 			return err
 		}
 		b, _ := io.ReadAll(cmd.InOrStdin())
-		var item any
-		if len(strings.TrimSpace(string(b))) > 0 {
-			if err := json.Unmarshal(b, &item); err != nil {
-				return err
-			}
-		}
-		items := []any{}
-		if item != nil {
-			items = append(items, item)
+		items, err := parseEvidenceInput(b)
+		if err != nil {
+			return err
 		}
 		path, pack, err := evidence.Create(config.Dir(), query, cfg.Policy, items)
 		if err != nil {
@@ -873,6 +935,33 @@ func (a *app) evidenceCmd() *cobra.Command {
 		return a.writeData(cmd, pack, nil)
 	}})
 	return cmd
+}
+
+func parseEvidenceInput(b []byte) ([]any, error) {
+	input := strings.TrimSpace(string(b))
+	if input == "" {
+		return nil, nil
+	}
+	var item any
+	if err := json.Unmarshal([]byte(input), &item); err == nil {
+		if items, ok := item.([]any); ok {
+			return items, nil
+		}
+		return []any{item}, nil
+	}
+	var items []any
+	for _, line := range strings.Split(input, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var v any
+		if err := json.Unmarshal([]byte(line), &v); err != nil {
+			return nil, err
+		}
+		items = append(items, v)
+	}
+	return items, nil
 }
 
 func (a *app) researchPackCmd() *cobra.Command {
@@ -912,64 +1001,6 @@ func lines(s string) []string {
 		l = strings.TrimSpace(l)
 		if l != "" {
 			out = append(out, l)
-		}
-	}
-	return out
-}
-
-func (a *app) localCrawl(ctx context.Context, start string, maxPages int) ([]capability.ExtractedDocument, error) {
-	cfg, st, cleanup, err := a.loadConfiguredState()
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-	r := router.New(cfg, st, credentials.NewKeychainStore())
-	base, err := url.Parse(start)
-	if err != nil {
-		return nil, err
-	}
-	seen := map[string]bool{}
-	queue := []string{start}
-	var docs []capability.ExtractedDocument
-	for len(queue) > 0 && len(docs) < maxPages {
-		u := queue[0]
-		queue = queue[1:]
-		if seen[u] {
-			continue
-		}
-		seen[u] = true
-		resp, ae := r.Fetch(ctx, capability.FetchRequest{URL: u, Providers: []string{"direct"}, CacheMode: "auto"})
-		if ae != nil {
-			continue
-		}
-		docs = append(docs, resp.Document)
-		for _, link := range extractLinks(resp.Document.HTML, u) {
-			parsed, err := url.Parse(link)
-			if err != nil || parsed.Hostname() != base.Hostname() || seen[link] {
-				continue
-			}
-			queue = append(queue, link)
-		}
-	}
-	return docs, nil
-}
-
-func extractLinks(htmlText string, baseURL string) []string {
-	base, _ := url.Parse(baseURL)
-	re := regexp.MustCompile(`(?i)href=["']([^"'#]+)["']`)
-	seen := map[string]bool{}
-	var out []string
-	for _, m := range re.FindAllStringSubmatch(htmlText, -1) {
-		ref, err := url.Parse(strings.TrimSpace(m[1]))
-		if err != nil {
-			continue
-		}
-		abs := base.ResolveReference(ref)
-		abs.Fragment = ""
-		u := abs.String()
-		if strings.HasPrefix(u, "http") && !seen[u] {
-			seen[u] = true
-			out = append(out, u)
 		}
 	}
 	return out
@@ -1019,6 +1050,10 @@ func (a *app) loadConfiguredState() (config.Config, *state.Store, func(), error)
 	return cfg, st, func() { _ = st.Close() }, nil
 }
 
-func init() {
-	http.DefaultClient.Timeout = 10 * time.Second
+func (a *app) router() (router.Router, func(), error) {
+	cfg, st, cleanup, err := a.loadConfiguredState()
+	if err != nil {
+		return router.Router{}, cleanup, err
+	}
+	return router.New(cfg, st, credentials.NewKeychainStore()), cleanup, nil
 }

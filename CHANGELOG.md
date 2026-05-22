@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.3
+
+- Routed archive, enrichment, citations, corpus, render, crawl, and map commands through the shared provider router.
+- Added routed data request/response types for non-search/fetch capabilities.
+- Added quota preflight support with OpenAlex as the first wired endpoint.
+- Added local provider usage counters and budget-based provider skipping.
+- Stabilized evidence packs with schema version, normalized records, provenance fields, and content hashes.
+- Expanded the public Go package with routed capability, quota, doctor, and evidence helpers.
+- Removed the raw remote helper path from CLI command execution.
+- Updated provider status and CLI documentation for quota preflight and metadata-only providers.
+
 ## v0.1.1
 
 - Promoted Currents, Mediastack, World News API, SerpApi, and serpstack after adapter/smoke verification.

@@ -87,3 +87,28 @@ func TestStats(t *testing.T) {
 		t.Fatalf("provider_state_count = %v", stats["provider_state_count"])
 	}
 }
+
+func TestProviderUsageAndReset(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.IncrementProviderUsage("brave", 24*time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	usage, ok, err := st.ProviderUsage("brave")
+	if err != nil || !ok {
+		t.Fatalf("usage = %+v/%v/%v", usage, ok, err)
+	}
+	if usage.RequestCount != 1 {
+		t.Fatalf("count = %d", usage.RequestCount)
+	}
+	if err := st.ResetProviderState("brave"); err != nil {
+		t.Fatal(err)
+	}
+	_, ok, err = st.ProviderUsage("brave")
+	if err != nil || ok {
+		t.Fatalf("usage after reset ok=%v err=%v", ok, err)
+	}
+}

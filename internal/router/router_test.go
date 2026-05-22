@@ -58,6 +58,44 @@ type fakeFetch struct {
 	err error
 }
 
+type fakeData struct {
+	id   string
+	data any
+	err  error
+}
+
+func (f fakeData) ID() string { return f.id }
+func (f fakeData) LookupArchive(ctx context.Context, url string, limit int) ([]capability.ArchiveRecord, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return []capability.ArchiveRecord{{URL: url, ArchiveURL: "https://archive.example/" + f.id, Provider: f.id}}, nil
+}
+func (f fakeData) Enrich(ctx context.Context, req capability.DataRequest) (any, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return map[string]any{"provider": f.id, "id": req.ID}, nil
+}
+func (f fakeData) Citations(ctx context.Context, req capability.DataRequest) (any, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return map[string]any{"provider": f.id, "doi": req.ID}, nil
+}
+func (f fakeData) Corpus(ctx context.Context, req capability.DataRequest) (any, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return map[string]any{"provider": f.id, "query": req.Query}, nil
+}
+func (f fakeData) Crawl(ctx context.Context, url string, maxPages int) ([]capability.ExtractedDocument, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return []capability.ExtractedDocument{{URL: url, Provider: f.id, Markdown: "This is enough crawl content to represent a crawled page."}}, nil
+}
+
 func (f fakeFetch) ID() string { return f.id }
 func (f fakeFetch) Fetch(ctx context.Context, req capability.FetchRequest) (capability.ExtractedDocument, error) {
 	if f.err != nil {
@@ -223,6 +261,58 @@ func TestFetchFallsBackOnPoorQuality(t *testing.T) {
 	}
 	if resp.Routing.Attempts[0].Reason != "poor_quality" {
 		t.Fatalf("expected poor_quality, got %+v", resp.Routing.Attempts)
+	}
+}
+
+func TestRoutedDataCapabilitiesFallBack(t *testing.T) {
+	st, err := state.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	cfg := config.Default()
+	cfg.Routing[capability.ArchiveLookup] = []string{"bad", "good"}
+	cfg.Providers["bad"] = config.ProviderConfig{Enabled: true}
+	cfg.Providers["good"] = config.ProviderConfig{Enabled: true}
+	r := New(cfg, st, fakeCreds{})
+	r.Adapters = map[string]Adapter{
+		"bad":  fakeData{id: "bad", err: ProviderError{Code: "rate_limited", Message: "limited", HTTPStatus: 429}},
+		"good": fakeData{id: "good"},
+	}
+	resp, ae := r.ArchiveLookup(context.Background(), capability.DataRequest{URL: "https://example.com", ExplainRouting: true, CacheMode: "refresh"})
+	if ae != nil {
+		t.Fatalf("ArchiveLookup error = %v", ae)
+	}
+	if len(resp.Routing.Attempts) != 2 || resp.Routing.ProvidersUsed[0] != "good" {
+		t.Fatalf("routing = %+v", resp.Routing)
+	}
+}
+
+func TestLocalUsageBudgetSkipsProvider(t *testing.T) {
+	st, err := state.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	cfg := config.Default()
+	cfg.MaxRequests = 1
+	cfg.Routing[capability.SearchWeb] = []string{"busy", "good"}
+	cfg.Providers["busy"] = config.ProviderConfig{Enabled: true}
+	cfg.Providers["good"] = config.ProviderConfig{Enabled: true}
+	if err := st.IncrementProviderUsage("busy", 24*time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	r := New(cfg, st, fakeCreds{})
+	r.Adapters = map[string]Adapter{"busy": fakeSearch{id: "busy"}, "good": fakeSearch{id: "good"}}
+	resp, ae := r.Search(context.Background(), capability.SearchRequest{Query: "x", Capability: capability.SearchWeb, Limit: 1, ExplainRouting: true, CacheMode: "refresh"})
+	if ae != nil {
+		t.Fatal(ae)
+	}
+	if resp.Results[0].Provider != "good" {
+		t.Fatalf("provider = %s", resp.Results[0].Provider)
+	}
+	if len(resp.Routing.Skipped) == 0 || resp.Routing.Skipped[0].Reason != "local_budget_exhausted" {
+		t.Fatalf("skipped = %+v", resp.Routing.Skipped)
 	}
 }
 

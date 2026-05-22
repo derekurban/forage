@@ -54,7 +54,7 @@ forage providers doctor --all --json
 
 Existing process environment variables take precedence over `.env`. The `.env` file is gitignored and should never be committed.
 
-The template contains only credential fields Forage should validate or keep ready for the recurring-free provider set. Blogger, WordPress API endpoints, Reddit, Google Custom Search, Diffbot, and ScraperAPI are intentionally excluded; Semantic Scholar uses public no-key endpoints in v0.1.
+The template contains only credential fields Forage should validate or keep ready for the recurring-free provider set. Blogger, WordPress API endpoints, Reddit, Google Custom Search, Diffbot, and ScraperAPI are intentionally excluded. Semantic Scholar remains metadata-only until its public shared limits are reliable enough for release routing.
 
 ## Common Commands
 
@@ -63,6 +63,7 @@ forage setup
 forage credentials list
 forage providers doctor
 forage providers quota
+forage providers quota --preflight --provider openalex
 forage search web "query" --json
 forage search scholar "machine learning" --json
 forage fetch https://example.com --json

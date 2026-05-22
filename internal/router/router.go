@@ -100,6 +100,7 @@ func (r Router) Search(ctx context.Context, req capability.SearchRequest) (capab
 			continue
 		}
 		start := time.Now().UTC()
+		r.observeProviderAttempt(id)
 		results, err := sp.Search(ctx, req)
 		aresult := attempt(id, "success", "")
 		aresult.StartedAt = start.Format(time.RFC3339)
@@ -171,6 +172,7 @@ func (r Router) Fetch(ctx context.Context, req capability.FetchRequest) (capabil
 			diag.Skipped = append(diag.Skipped, attempt(id, "skipped", "capability_not_supported"))
 			continue
 		}
+		r.observeProviderAttempt(id)
 		doc, err := fp.Fetch(ctx, req)
 		if err != nil {
 			r.observeProviderError(id, err)
@@ -195,6 +197,176 @@ func (r Router) Fetch(ctx context.Context, req capability.FetchRequest) (capabil
 		return resp, nil
 	}
 	return capability.FetchResponse{}, exhausted(capability.FetchURL, diag)
+}
+
+func (r Router) ArchiveLookup(ctx context.Context, req capability.DataRequest) (capability.DataResponse, *apperr.Error) {
+	req.Capability = capability.ArchiveLookup
+	return r.runData(ctx, req, func(ctx context.Context, id string, a Adapter, req capability.DataRequest) (any, error) {
+		p, ok := a.(capability.ArchiveProvider)
+		if !ok {
+			return nil, ProviderError{Code: "unsupported_capability", Message: "archive lookup unsupported"}
+		}
+		return p.LookupArchive(ctx, req.URL, req.Limit)
+	})
+}
+
+func (r Router) EnrichDOI(ctx context.Context, req capability.DataRequest) (capability.DataResponse, *apperr.Error) {
+	req.Capability = capability.EnrichDOI
+	return r.enrich(ctx, req)
+}
+
+func (r Router) EnrichPaper(ctx context.Context, req capability.DataRequest) (capability.DataResponse, *apperr.Error) {
+	req.Capability = capability.EnrichPaper
+	return r.enrich(ctx, req)
+}
+
+func (r Router) EnrichAuthor(ctx context.Context, req capability.DataRequest) (capability.DataResponse, *apperr.Error) {
+	req.Capability = capability.EnrichAuthor
+	return r.enrich(ctx, req)
+}
+
+func (r Router) enrich(ctx context.Context, req capability.DataRequest) (capability.DataResponse, *apperr.Error) {
+	return r.runData(ctx, req, func(ctx context.Context, id string, a Adapter, req capability.DataRequest) (any, error) {
+		p, ok := a.(capability.EnrichmentProvider)
+		if !ok {
+			return nil, ProviderError{Code: "unsupported_capability", Message: "enrichment unsupported"}
+		}
+		return p.Enrich(ctx, req)
+	})
+}
+
+func (r Router) Citations(ctx context.Context, req capability.DataRequest) (capability.DataResponse, *apperr.Error) {
+	req.Capability = capability.CitationsDOI
+	return r.runData(ctx, req, func(ctx context.Context, id string, a Adapter, req capability.DataRequest) (any, error) {
+		p, ok := a.(capability.CitationProvider)
+		if !ok {
+			return nil, ProviderError{Code: "unsupported_capability", Message: "citations unsupported"}
+		}
+		return p.Citations(ctx, req)
+	})
+}
+
+func (r Router) CorpusQuery(ctx context.Context, req capability.DataRequest) (capability.DataResponse, *apperr.Error) {
+	req.Capability = capability.CorpusQuery
+	return r.runData(ctx, req, func(ctx context.Context, id string, a Adapter, req capability.DataRequest) (any, error) {
+		p, ok := a.(capability.CorpusProvider)
+		if !ok {
+			return nil, ProviderError{Code: "unsupported_capability", Message: "corpus query unsupported"}
+		}
+		return p.Corpus(ctx, req)
+	})
+}
+
+func (r Router) Render(ctx context.Context, req capability.FetchRequest) (capability.FetchResponse, *apperr.Error) {
+	diag := capability.RoutingDiagnostics{Capability: capability.RenderBrowser}
+	for _, id := range r.eligible(capability.RenderBrowser, req.Providers, req.ExcludeProviders, &diag) {
+		a, ok := r.Adapters[id]
+		if !ok {
+			diag.Skipped = append(diag.Skipped, attempt(id, "skipped", "adapter_not_implemented"))
+			continue
+		}
+		p, ok := a.(capability.RenderProvider)
+		if !ok {
+			diag.Skipped = append(diag.Skipped, attempt(id, "skipped", "capability_not_supported"))
+			continue
+		}
+		start := time.Now().UTC()
+		r.observeProviderAttempt(id)
+		doc, err := p.Render(ctx, req)
+		aresult := attempt(id, "success", "")
+		aresult.StartedAt = start.Format(time.RFC3339)
+		aresult.FinishedAt = time.Now().UTC().Format(time.RFC3339)
+		if err != nil {
+			r.observeProviderError(id, err)
+			aresult.Status = "failed"
+			aresult.Reason = classify(err)
+			diag.Attempts = append(diag.Attempts, aresult)
+			_ = r.State.RecordAttempt(state.ProviderAttempt{Capability: capability.RenderBrowser, Provider: id, Status: "failed", Reason: aresult.Reason, StartedAt: aresult.StartedAt, FinishedAt: aresult.FinishedAt})
+			continue
+		}
+		r.observeProviderSuccess(id)
+		diag.Attempts = append(diag.Attempts, aresult)
+		diag.ProvidersUsed = append(diag.ProvidersUsed, id)
+		_ = r.State.RecordAttempt(state.ProviderAttempt{Capability: capability.RenderBrowser, Provider: id, Status: "success", StartedAt: aresult.StartedAt, FinishedAt: aresult.FinishedAt})
+		resp := capability.FetchResponse{Document: doc, Routing: &diag, CacheStatus: "miss"}
+		if !req.ExplainRouting {
+			resp.Routing = nil
+		}
+		return resp, nil
+	}
+	return capability.FetchResponse{}, exhausted(capability.RenderBrowser, diag)
+}
+
+func (r Router) Crawl(ctx context.Context, req capability.DataRequest) (capability.DataResponse, *apperr.Error) {
+	req.Capability = capability.CrawlSite
+	return r.runData(ctx, req, func(ctx context.Context, id string, a Adapter, req capability.DataRequest) (any, error) {
+		p, ok := a.(capability.CrawlProvider)
+		if !ok {
+			return nil, ProviderError{Code: "unsupported_capability", Message: "crawl unsupported"}
+		}
+		return p.Crawl(ctx, req.URL, req.MaxPages)
+	})
+}
+
+func (r Router) runData(ctx context.Context, req capability.DataRequest, call func(context.Context, string, Adapter, capability.DataRequest) (any, error)) (capability.DataResponse, *apperr.Error) {
+	if req.Limit <= 0 {
+		req.Limit = 10
+	}
+	if req.CacheMode == "" {
+		req.CacheMode = r.Config.Cache.Mode
+	}
+	key := cacheKey("data", req)
+	var cached capability.DataResponse
+	if req.CacheMode != "refresh" {
+		if reason, ok, err := r.State.NegativeCacheActive(key); err == nil && ok {
+			return capability.DataResponse{}, apperr.New(apperr.CodeCacheMiss, "recent "+req.Capability+" cache miss: "+reason, apperr.ExitCacheMiss)
+		}
+		ok, err := r.State.LatestRecord("data", key, time.Duration(r.Config.Cache.TTLHours)*time.Hour, &cached)
+		if err == nil && ok {
+			cached.CacheStatus = "hit"
+			if !req.ExplainRouting {
+				cached.Routing = nil
+			}
+			return cached, nil
+		}
+		if req.CacheMode == "only" {
+			_ = r.State.PutNegativeCache(key, "cache_miss", 5*time.Minute)
+			return capability.DataResponse{}, apperr.New(apperr.CodeCacheMiss, "cache-only "+req.Capability+" missed", apperr.ExitCacheMiss)
+		}
+	}
+	diag := capability.RoutingDiagnostics{Capability: req.Capability}
+	for _, id := range r.eligible(req.Capability, req.Providers, req.ExcludeProviders, &diag) {
+		a, ok := r.Adapters[id]
+		if !ok {
+			diag.Skipped = append(diag.Skipped, attempt(id, "skipped", "adapter_not_implemented"))
+			continue
+		}
+		start := time.Now().UTC()
+		r.observeProviderAttempt(id)
+		data, err := call(ctx, id, a, req)
+		aresult := attempt(id, "success", "")
+		aresult.StartedAt = start.Format(time.RFC3339)
+		aresult.FinishedAt = time.Now().UTC().Format(time.RFC3339)
+		if err != nil {
+			r.observeProviderError(id, err)
+			aresult.Status = "failed"
+			aresult.Reason = classify(err)
+			diag.Attempts = append(diag.Attempts, aresult)
+			_ = r.State.RecordAttempt(state.ProviderAttempt{Capability: req.Capability, Provider: id, Status: "failed", Reason: aresult.Reason, StartedAt: aresult.StartedAt, FinishedAt: aresult.FinishedAt})
+			continue
+		}
+		r.observeProviderSuccess(id)
+		diag.Attempts = append(diag.Attempts, aresult)
+		diag.ProvidersUsed = append(diag.ProvidersUsed, id)
+		_ = r.State.RecordAttempt(state.ProviderAttempt{Capability: req.Capability, Provider: id, Status: "success", StartedAt: aresult.StartedAt, FinishedAt: aresult.FinishedAt})
+		resp := capability.DataResponse{Capability: req.Capability, Data: data, Routing: &diag, CacheStatus: "miss"}
+		_ = r.State.PutRecord("data", key, id, req.URL, req.Query, resp)
+		if !req.ExplainRouting {
+			resp.Routing = nil
+		}
+		return resp, nil
+	}
+	return capability.DataResponse{}, exhausted(req.Capability, diag)
 }
 
 func poorQuality(doc capability.ExtractedDocument) bool {
@@ -266,9 +438,34 @@ func (r Router) eligible(cap string, include, exclude []string, diag *capability
 				continue
 			}
 		}
+		if skip, reason := r.skipForUsage(id); skip {
+			diag.Skipped = append(diag.Skipped, attempt(id, "skipped", reason))
+			continue
+		}
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+func (r Router) skipForUsage(id string) (bool, string) {
+	if r.Config.MaxRequests <= 0 {
+		return false, ""
+	}
+	usage, ok, err := r.State.ProviderUsage(id)
+	if err != nil || !ok {
+		return false, ""
+	}
+	if t, err := time.Parse(time.RFC3339, usage.WindowEnd); err == nil && time.Now().UTC().After(t) {
+		return false, ""
+	}
+	if usage.RequestCount >= int64(r.Config.MaxRequests) {
+		return true, "local_budget_exhausted"
+	}
+	return false, ""
+}
+
+func (r Router) observeProviderAttempt(id string) {
+	_ = r.State.IncrementProviderUsage(id, 24*time.Hour)
 }
 
 func (r Router) observeProviderError(id string, err error) {
