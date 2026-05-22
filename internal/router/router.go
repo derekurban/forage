@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -69,6 +70,9 @@ func (r Router) Search(ctx context.Context, req capability.SearchRequest) (capab
 	var cached capability.SearchResponse
 	ttl := time.Duration(r.Config.Cache.TTLHours) * time.Hour
 	if req.CacheMode != "refresh" {
+		if reason, ok, err := r.State.NegativeCacheActive(key); err == nil && ok {
+			return capability.SearchResponse{}, apperr.New(apperr.CodeCacheMiss, "recent search cache miss: "+reason, apperr.ExitCacheMiss)
+		}
 		ok, err := r.State.LatestRecord("search", key, ttl, &cached)
 		if err == nil && ok {
 			cached.CacheStatus = "hit"
@@ -139,6 +143,9 @@ func (r Router) Fetch(ctx context.Context, req capability.FetchRequest) (capabil
 	key := cacheKey("fetch", req)
 	var cached capability.FetchResponse
 	if req.CacheMode != "refresh" {
+		if reason, ok, err := r.State.NegativeCacheActive(key); err == nil && ok {
+			return capability.FetchResponse{}, apperr.New(apperr.CodeCacheMiss, "recent fetch cache miss: "+reason, apperr.ExitCacheMiss)
+		}
 		ok, err := r.State.LatestRecord("fetch", key, time.Duration(r.Config.Cache.TTLHours)*time.Hour, &cached)
 		if err == nil && ok {
 			cached.CacheStatus = "hit"
@@ -171,6 +178,11 @@ func (r Router) Fetch(ctx context.Context, req capability.FetchRequest) (capabil
 			_ = r.State.RecordAttempt(state.ProviderAttempt{Capability: capability.FetchURL, Provider: id, Status: "failed", Reason: classify(err)})
 			continue
 		}
+		if poorQuality(doc) {
+			diag.Attempts = append(diag.Attempts, attempt(id, "failed", "poor_quality"))
+			_ = r.State.RecordAttempt(state.ProviderAttempt{Capability: capability.FetchURL, Provider: id, Status: "failed", Reason: "poor_quality"})
+			continue
+		}
 		r.observeProviderSuccess(id)
 		diag.Attempts = append(diag.Attempts, attempt(id, "success", ""))
 		diag.ProvidersUsed = append(diag.ProvidersUsed, id)
@@ -183,6 +195,23 @@ func (r Router) Fetch(ctx context.Context, req capability.FetchRequest) (capabil
 		return resp, nil
 	}
 	return capability.FetchResponse{}, exhausted(capability.FetchURL, diag)
+}
+
+func poorQuality(doc capability.ExtractedDocument) bool {
+	content := strings.TrimSpace(doc.Markdown)
+	if content == "" {
+		content = strings.TrimSpace(doc.PlainText)
+	}
+	lower := strings.ToLower(content)
+	if len(content) < 80 {
+		return true
+	}
+	for _, marker := range []string{"access denied", "enable javascript", "captcha", "cloudflare", "paywall", "subscribe to continue"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return doc.QualityScore > 0 && doc.QualityScore < 0.2
 }
 
 func (r Router) eligible(cap string, include, exclude []string, diag *capability.RoutingDiagnostics) []string {
@@ -296,7 +325,15 @@ func classify(err error) string {
 }
 
 func exhausted(cap string, diag capability.RoutingDiagnostics) *apperr.Error {
-	e := apperr.New(apperr.CodeCapabilityExhausted, fmt.Sprintf("No configured providers are currently available for %s.", cap), apperr.ExitCapabilityExhausted)
+	code := apperr.CodeCapabilityExhausted
+	exit := apperr.ExitCapabilityExhausted
+	message := fmt.Sprintf("No configured providers are currently available for %s.", cap)
+	if allUnavailableForAuth(diag) {
+		code = apperr.CodeAuthMissing
+		exit = apperr.ExitAuthSetup
+		message = fmt.Sprintf("No authenticated providers are configured for %s. Add credentials with `forage setup` or `forage credentials set PROVIDER --value-stdin`.", cap)
+	}
+	e := apperr.New(code, message, exit)
 	e.Capability = cap
 	for _, a := range append(diag.Attempts, diag.Skipped...) {
 		e.Providers = append(e.Providers, apperr.ProviderInfo{Name: a.Provider, Status: a.Status, Reason: a.Reason})
@@ -323,7 +360,7 @@ func containsCapability(caps []string, cap string) bool {
 func skipForState(ps state.ProviderState, authOK bool) (bool, string) {
 	switch ps.Status {
 	case "cooldown", "exhausted":
-		if retryTimeActive(ps.RetryAfter) || retryTimeActive(ps.ResetAt) || (ps.RetryAfter == "" && ps.ResetAt == "") {
+		if retryTimeActive(ps.RetryAfter, ps.LastCheckedAt) || retryTimeActive(ps.ResetAt, ps.LastCheckedAt) || (ps.RetryAfter == "" && ps.ResetAt == "") {
 			return true, ps.Status
 		}
 	case "disabled":
@@ -335,12 +372,19 @@ func skipForState(ps state.ProviderState, authOK bool) (bool, string) {
 	return false, ""
 }
 
-func retryTimeActive(v string) bool {
+func retryTimeActive(v, observedAt string) bool {
 	if strings.TrimSpace(v) == "" {
 		return false
 	}
 	if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-		return n > 0
+		if n <= 0 {
+			return false
+		}
+		t, err := time.Parse(time.RFC3339, observedAt)
+		if err != nil {
+			return true
+		}
+		return time.Now().UTC().Before(t.Add(time.Duration(n) * time.Second))
 	}
 	if t, err := time.Parse(time.RFC1123, v); err == nil {
 		return time.Now().UTC().Before(t)
@@ -351,10 +395,31 @@ func retryTimeActive(v string) bool {
 	return true
 }
 
+func allUnavailableForAuth(diag capability.RoutingDiagnostics) bool {
+	seen := false
+	for _, a := range diag.Attempts {
+		seen = true
+		if a.Reason != "auth_failed" && a.Reason != "auth_missing" && !strings.HasPrefix(a.Reason, "auth_missing:") {
+			return false
+		}
+	}
+	for _, a := range diag.Skipped {
+		if a.Reason == "metadata_only" || a.Reason == "legacy_optional" || a.Reason == "adapter_not_implemented" || a.Reason == "capability_not_supported" {
+			continue
+		}
+		seen = true
+		if !strings.HasPrefix(a.Reason, "auth_missing:") && a.Reason != "auth_missing" && !strings.HasPrefix(a.Reason, "disabled:auth") {
+			return false
+		}
+	}
+	return seen
+}
+
 func dedupe(in []capability.SearchResult) []capability.SearchResult {
 	seen := map[string]bool{}
 	var out []capability.SearchResult
 	for _, r := range in {
+		r.CanonicalURL = canonicalURL(r.CanonicalURL, r.URL)
 		key := strings.ToLower(strings.TrimSpace(r.CanonicalURL))
 		if key == "" {
 			key = strings.ToLower(strings.TrimSpace(r.URL))
@@ -369,4 +434,27 @@ func dedupe(in []capability.SearchResult) []capability.SearchResult {
 		out = append(out, r)
 	}
 	return out
+}
+
+func canonicalURL(primary, fallback string) string {
+	raw := strings.TrimSpace(primary)
+	if raw == "" {
+		raw = strings.TrimSpace(fallback)
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return raw
+	}
+	u.Scheme = strings.ToLower(u.Scheme)
+	u.Host = strings.ToLower(u.Host)
+	u.Fragment = ""
+	q := u.Query()
+	for _, k := range []string{"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid"} {
+		q.Del(k)
+	}
+	u.RawQuery = q.Encode()
+	if (u.Scheme == "https" && strings.HasSuffix(u.Host, ":443")) || (u.Scheme == "http" && strings.HasSuffix(u.Host, ":80")) {
+		u.Host = strings.Split(u.Host, ":")[0]
+	}
+	return u.String()
 }

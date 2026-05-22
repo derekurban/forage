@@ -105,7 +105,7 @@ func Default() Config {
 		},
 		Routing: map[string][]string{
 			"search.web":      {"brave", "jina", "browserbase", "tavily", "exa", "serpapi", "serpstack"},
-			"search.news":     {"gdelt", "brave", "guardian", "currents", "gnews", "newsapi", "mediastack", "worldnews", "serpapi"},
+			"search.news":     {"brave", "guardian", "gnews", "newsapi", "currents", "mediastack", "worldnews", "serpapi", "gdelt"},
 			"search.scholar":  {"openalex", "semantic_scholar", "crossref", "arxiv", "pubmed", "datacite", "europepmc", "doaj"},
 			"search.platform": {"hackernews", "forem"},
 			"extract.article": {"jina", "browserbase", "firecrawl", "scrapingant", "apify", "direct"},
@@ -214,6 +214,28 @@ func Load() (Config, error) {
 		cfg.Routing[cap] = kept
 	}
 	return cfg, nil
+}
+
+func Repair() (Config, bool, error) {
+	b, err := os.ReadFile(Path())
+	if err != nil {
+		return Config{}, false, err
+	}
+	cfg, err := Load()
+	if err != nil {
+		return Config{}, false, err
+	}
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		return Config{}, false, err
+	}
+	changed := string(b) != string(out)
+	if changed {
+		if err := os.WriteFile(Path(), out, 0o600); err != nil {
+			return Config{}, false, err
+		}
+	}
+	return cfg, changed, nil
 }
 
 func Enabled(cfg Config, provider string) bool {

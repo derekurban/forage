@@ -140,6 +140,50 @@ func (r Runner) probe(ctx context.Context, p providers.Provider, key string) (st
 		req, err = http.NewRequestWithContext(ctx, http.MethodPost, "https://api.exa.ai/search", strings.NewReader(`{"query":"forage","numResults":1}`))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("x-api-key", key)
+	case "browserbase":
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, "https://api.browserbase.com/v1/search", strings.NewReader(`{"query":"forage","numResults":1}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-BB-API-Key", key)
+	case "firecrawl":
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, "https://api.firecrawl.dev/v1/scrape", strings.NewReader(`{"url":"https://www.example.com","formats":["markdown"]}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+key)
+	case "scrapingant":
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://api.scrapingant.com/v2/general?url=https%3A%2F%2Fwww.example.com&return_text=true&x-api-key="+key, nil)
+	case "guardian":
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://content.guardianapis.com/search?q=forage&page-size=1&api-key="+key, nil)
+	case "gnews":
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://gnews.io/api/v4/search?q=forage&max=1&apikey="+key, nil)
+	case "newsapi":
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://newsapi.org/v2/everything?q=forage&pageSize=1&apiKey="+key, nil)
+	case "openalex":
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://api.openalex.org/works?search=forage&per-page=1", nil)
+		if key != "" {
+			q := req.URL.Query()
+			q.Set("api_key", key)
+			req.URL.RawQuery = q.Encode()
+		}
+	case "pubmed":
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&retmode=json&term=forage&retmax=1", nil)
+		if key != "" {
+			q := req.URL.Query()
+			q.Set("api_key", key)
+			req.URL.RawQuery = q.Encode()
+		}
+	case "datacite":
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://api.datacite.org/dois?query=forage&page[size]=1", nil)
+	case "europepmc":
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://www.ebi.ac.uk/europepmc/webservices/rest/search?format=json&query=forage&pageSize=1", nil)
+	case "doaj":
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://doaj.org/api/search/articles/forage?pageSize=1", nil)
+	case "forem":
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://dev.to/api/articles?tag=go&per_page=1", nil)
+	case "gdelt":
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://api.gdeltproject.org/api/v2/doc/doc?query=forage&mode=artlist&format=json&maxrecords=1", nil)
+	case "internet_archive":
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://archive.org/wayback/available?url=example.com", nil)
+	case "commoncrawl":
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://index.commoncrawl.org/collinfo.json", nil)
 	default:
 		ps.Status = "degraded"
 		ps.Reason = "probe_not_implemented"
@@ -184,7 +228,7 @@ func (r Runner) probe(ctx context.Context, p providers.Provider, key string) (st
 func observeHeaders(resp *http.Response, ps *state.ProviderState) {
 	for _, h := range []string{"x-ratelimit-remaining", "ratelimit-remaining", "x-rate-limit-remaining"} {
 		if v := resp.Header.Get(h); v != "" {
-			if n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+			if n, err := strconv.ParseInt(firstHeaderValue(v), 10, 64); err == nil {
 				ps.Remaining = &n
 			}
 			break
@@ -195,7 +239,7 @@ func observeHeaders(resp *http.Response, ps *state.ProviderState) {
 	}
 	for _, h := range []string{"x-ratelimit-reset", "ratelimit-reset", "x-rate-limit-reset"} {
 		if v := resp.Header.Get(h); v != "" {
-			ps.ResetAt = v
+			ps.ResetAt = firstHeaderValue(v)
 			break
 		}
 	}
@@ -206,4 +250,12 @@ func observeHeaders(resp *http.Response, ps *state.ProviderState) {
 		}
 	}
 	ps.Observed = strings.Join(observed, "; ")
+}
+
+func firstHeaderValue(v string) string {
+	parts := strings.Split(v, ",")
+	if len(parts) == 0 {
+		return strings.TrimSpace(v)
+	}
+	return strings.TrimSpace(parts[0])
 }

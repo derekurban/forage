@@ -627,7 +627,11 @@ func (a HTTPAdapter) scrapingAntExtract(ctx context.Context, target string) (cap
 	if err != nil {
 		return capability.ExtractedDocument{}, err
 	}
-	return capability.ExtractedDocument{URL: target, RetrievedAt: time.Now().UTC(), PlainText: txt, Markdown: txt, Provider: a.id, ExtractionMethod: "scrapingant_text", QualityScore: quality(txt), ContentHash: hash(txt)}, nil
+	plain := txt
+	if strings.Contains(strings.ToLower(txt), "<html") || strings.Contains(strings.ToLower(txt), "<body") {
+		plain = stripHTML(txt)
+	}
+	return capability.ExtractedDocument{URL: target, Title: extractTitle(txt), RetrievedAt: time.Now().UTC(), HTML: htmlIfPresent(txt), PlainText: plain, Markdown: plain, Provider: a.id, ExtractionMethod: "scrapingant_text", QualityScore: quality(plain), ContentHash: hash(plain)}, nil
 }
 
 func (a HTTPAdapter) getJSON(ctx context.Context, u string, headers map[string]string, dest any) error {
@@ -643,7 +647,10 @@ func (a HTTPAdapter) getJSON(ctx context.Context, u string, headers map[string]s
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return providerHTTPError(resp)
 	}
-	return json.NewDecoder(resp.Body).Decode(dest)
+	if err := json.NewDecoder(resp.Body).Decode(dest); err != nil {
+		return ProviderError{Code: "malformed_response", Message: "provider returned malformed JSON"}
+	}
+	return nil
 }
 
 func (a HTTPAdapter) postJSON(ctx context.Context, u string, headers map[string]string, body any, dest any) error {
@@ -661,7 +668,10 @@ func (a HTTPAdapter) postJSON(ctx context.Context, u string, headers map[string]
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return providerHTTPError(resp)
 	}
-	return json.NewDecoder(resp.Body).Decode(dest)
+	if err := json.NewDecoder(resp.Body).Decode(dest); err != nil {
+		return ProviderError{Code: "malformed_response", Message: "provider returned malformed JSON"}
+	}
+	return nil
 }
 
 func (a HTTPAdapter) getText(ctx context.Context, u string, headers map[string]string) (string, error) {
@@ -699,11 +709,12 @@ func providerHTTPError(resp *http.Response) error {
 	if len(body) > 0 {
 		observed = strings.TrimSpace(strings.Join([]string{observed, "body=" + string(body)}, "; "))
 	}
-	return ProviderError{Code: code, Message: fmt.Sprintf("provider returned HTTP %d", resp.StatusCode), RetryAfter: resp.Header.Get("Retry-After"), ResetAt: firstHeader(resp, "x-ratelimit-reset", "ratelimit-reset", "x-rate-limit-reset"), Observed: observed, HTTPStatus: resp.StatusCode}
+	return ProviderError{Code: code, Message: fmt.Sprintf("provider returned HTTP %d", resp.StatusCode), RetryAfter: firstHeaderValue(resp.Header.Get("Retry-After")), ResetAt: firstHeader(resp, "x-ratelimit-reset", "ratelimit-reset", "x-rate-limit-reset"), Observed: observed, HTTPStatus: resp.StatusCode}
 }
 
 func result(provider string, rank int, u, title, snippet, typ string) capability.SearchResult {
-	return capability.SearchResult{URL: u, CanonicalURL: u, Title: title, Snippet: stripHTML(snippet), Provider: provider, ProviderRank: rank + 1, ResultType: typ, SourceDomain: domain(u)}
+	canon := canonicalURL("", u)
+	return capability.SearchResult{URL: u, CanonicalURL: canon, Title: cleanText(title, 300), Snippet: cleanText(stripHTML(snippet), 700), Provider: provider, ProviderRank: rank + 1, ResultType: typ, SourceDomain: domain(canon)}
 }
 func limit(n int) int {
 	if n <= 0 {
@@ -737,11 +748,26 @@ func stripHTML(s string) string {
 	return strings.TrimSpace(regexp.MustCompile(`\s+`).ReplaceAllString(s, " "))
 }
 func stripMarkdown(s string) string { return strings.TrimSpace(strings.ReplaceAll(s, "#", "")) }
+func cleanText(s string, max int) string {
+	s = strings.TrimSpace(regexp.MustCompile(`\s+`).ReplaceAllString(s, " "))
+	if max > 0 && len(s) > max {
+		return strings.TrimSpace(s[:max]) + "..."
+	}
+	return s
+}
 func extractTitle(s string) string {
 	re := regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 	m := re.FindStringSubmatch(s)
 	if len(m) > 1 {
 		return strings.TrimSpace(m[1])
+	}
+	return ""
+}
+
+func htmlIfPresent(s string) string {
+	lower := strings.ToLower(s)
+	if strings.Contains(lower, "<html") || strings.Contains(lower, "<body") || strings.Contains(lower, "<!doctype") {
+		return s
 	}
 	return ""
 }
@@ -766,7 +792,7 @@ func hash(s string) string {
 func firstHeader(resp *http.Response, names ...string) string {
 	for _, name := range names {
 		if v := resp.Header.Get(name); v != "" {
-			return v
+			return firstHeaderValue(v)
 		}
 	}
 	return ""
@@ -780,6 +806,14 @@ func observedQuotaHeaders(resp *http.Response) string {
 		}
 	}
 	return strings.Join(parts, "; ")
+}
+
+func firstHeaderValue(v string) string {
+	parts := strings.Split(v, ",")
+	if len(parts) == 0 {
+		return strings.TrimSpace(v)
+	}
+	return strings.TrimSpace(parts[0])
 }
 
 func bearerHeaders(token string) map[string]string {

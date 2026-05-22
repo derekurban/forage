@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -94,5 +95,33 @@ func TestLoadMergesNewDefaultProviders(t *testing.T) {
 	}
 	if !contains(cfg.Routing["search.web"], "browserbase") {
 		t.Fatal("new default route provider should be appended to older routes")
+	}
+}
+
+func TestRepairWritesNormalizedConfig(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(".forage", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(".forage", "config.yaml")
+	if err := os.WriteFile(path, []byte("version: 1\nproviders:\n  blogger:\n    enabled: true\nrouting:\n  search.web:\n    - google_cse\ncache:\n  database: .forage/state.db\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, changed, err := Repair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("Repair() changed = false")
+	}
+	if Enabled(cfg, "blogger") {
+		t.Fatal("removed provider should be pruned")
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "blogger") || strings.Contains(string(b), "google_cse") {
+		t.Fatalf("repaired config still contains removed provider:\n%s", string(b))
 	}
 }

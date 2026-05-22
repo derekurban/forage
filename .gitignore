@@ -4,6 +4,8 @@
 .forage/evidence/
 forage.exe
 *.exe
+*.zip
+*.zip.sha256
 *.log
 dist/
 build/

@@ -104,6 +104,30 @@ func (a *app) configCmd() *cobra.Command {
 	}
 	init.Flags().BoolVar(&overwrite, "overwrite", false, "overwrite existing config")
 	cmd.AddCommand(init)
+	cmd.AddCommand(&cobra.Command{
+		Use:   "repair",
+		Short: "Repair .forage/config.yaml defaults and removed providers",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, changed, err := config.Repair()
+			if err != nil {
+				if os.IsNotExist(err) {
+					return apperr.MissingConfig(config.Path())
+				}
+				return err
+			}
+			data := map[string]any{"path": config.Path(), "changed": changed, "providers": len(cfg.Providers), "routing": len(cfg.Routing)}
+			if a.opts.JSON || a.opts.JSONL {
+				return output.Write(cmd.OutOrStdout(), a.opts, cmd.CommandPath(), data, nil)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), output.Heading(a.opts, "Forage config"))
+			if changed {
+				fmt.Fprintf(cmd.OutOrStdout(), "Repaired %s\n", config.Path())
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "%s already matches current defaults\n", config.Path())
+			}
+			return nil
+		},
+	})
 	return cmd
 }
 

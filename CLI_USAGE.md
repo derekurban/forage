@@ -8,6 +8,7 @@ Create the global config:
 
 ```powershell
 forage config init
+forage config repair
 ```
 
 Interactive setup stores API keys in the OS keychain:
@@ -39,9 +40,11 @@ forage providers doctor --all --json
 
 `.env` is repo-local, gitignored, and loaded before credential checks. Existing process environment variables win over values from `.env`.
 
-No credentials are needed for Hacker News, GDELT, Semantic Scholar public endpoints, Crossref, arXiv, DataCite, Wikidata, Internet Archive, Common Crawl, Forem, DOAJ, or Europe PMC.
+No credentials are needed for Hacker News, Semantic Scholar public endpoints, Crossref, arXiv, DataCite, Wikidata, Internet Archive, Common Crawl, Forem, DOAJ, or Europe PMC. GDELT is registered as metadata-only until its public endpoint is reliable from the Windows release environment.
 
-Blogger, WordPress API endpoints, Reddit, Google Custom Search, Diffbot, and ScraperAPI are intentionally excluded from the v0.1 provider setup.
+Blogger, WordPress API endpoints, Reddit, Google Custom Search, Diffbot, ScraperAPI, and Europeana are intentionally excluded from the v0.1 provider setup.
+
+See `PROVIDER_STATUS.md` for the current release-verification target and metadata-only provider list.
 
 ## Health and Quota
 

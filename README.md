@@ -78,6 +78,8 @@ The default registry includes providers that appear to support recurring free us
 
 If no configured provider can satisfy a command, Forage fails clearly with a structured error and setup hints instead of inventing weak fallback sources.
 
+See [PROVIDER_STATUS.md](PROVIDER_STATUS.md) for the current live, metadata-only, and release-verification targets.
+
 ## Development
 
 ```powershell
