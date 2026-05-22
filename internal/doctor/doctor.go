@@ -128,7 +128,7 @@ func (r Runner) probe(ctx context.Context, p providers.Provider, key string) (st
 		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://api.search.brave.com/res/v1/web/search?q=forage&count=1", nil)
 		req.Header.Set("X-Subscription-Token", key)
 	case "jina":
-		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://r.jina.ai/http://example.com", nil)
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://r.jina.ai/https://www.example.com", nil)
 		if key != "" {
 			req.Header.Set("Authorization", "Bearer "+key)
 		}

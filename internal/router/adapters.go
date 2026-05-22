@@ -111,19 +111,33 @@ func (a HTTPAdapter) searchWeb(ctx context.Context, req capability.SearchRequest
 		}
 		return out, nil
 	case "jina":
+		key, _ := a.creds.Get("jina", "JINA_API_KEY")
+		headers := bearerHeaders(key.Value)
+		if headers == nil {
+			headers = map[string]string{}
+		}
+		headers["Accept"] = "application/json"
 		u := "https://s.jina.ai/" + url.QueryEscape(q)
-		var raw []struct{ Title, URL, Content string }
-		err := a.getJSON(ctx, u, nil, &raw)
+		var raw struct {
+			Data []struct {
+				Title, URL, Description, Content string
+			} `json:"data"`
+		}
+		err := a.getJSON(ctx, u, headers, &raw)
 		if err != nil {
-			txt, terr := a.getText(ctx, u, nil)
+			txt, terr := a.getText(ctx, u, headers)
 			if terr != nil {
 				return nil, err
 			}
 			return parseMarkdownLinks(a.id, txt, "web"), nil
 		}
 		var out []capability.SearchResult
-		for i, r := range raw {
-			out = append(out, result(a.id, i, r.URL, r.Title, r.Content, "web"))
+		for i, r := range raw.Data {
+			snippet := r.Description
+			if snippet == "" {
+				snippet = r.Content
+			}
+			out = append(out, result(a.id, i, r.URL, r.Title, snippet, "web"))
 		}
 		return out, nil
 	case "browserbase":
@@ -564,8 +578,9 @@ func (a HTTPAdapter) directFetch(ctx context.Context, target string) (capability
 }
 
 func (a HTTPAdapter) jinaFetch(ctx context.Context, target string) (capability.ExtractedDocument, error) {
+	key, _ := a.creds.Get("jina", "JINA_API_KEY")
 	u := "https://r.jina.ai/" + target
-	md, err := a.getText(ctx, u, nil)
+	md, err := a.getText(ctx, u, bearerHeaders(key.Value))
 	if err != nil {
 		return capability.ExtractedDocument{}, err
 	}
@@ -765,6 +780,13 @@ func observedQuotaHeaders(resp *http.Response) string {
 		}
 	}
 	return strings.Join(parts, "; ")
+}
+
+func bearerHeaders(token string) map[string]string {
+	if strings.TrimSpace(token) == "" {
+		return nil
+	}
+	return map[string]string{"Authorization": "Bearer " + strings.TrimSpace(token)}
 }
 
 func parseMarkdownLinks(provider, txt, typ string) []capability.SearchResult {
