@@ -46,8 +46,8 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cfg.Credentials.Store != "keychain" {
 		t.Fatalf("Credentials.Store = %q", cfg.Credentials.Store)
 	}
-	if !Enabled(cfg, "brave") {
-		t.Fatal("brave should be enabled by default")
+	if Enabled(cfg, "brave") {
+		t.Fatal("brave should not be enabled by default")
 	}
 	if !Enabled(cfg, "direct") {
 		t.Fatal("direct should be enabled by default")
@@ -55,15 +55,16 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if !Enabled(cfg, "browserbase") {
 		t.Fatal("browserbase should be enabled by default")
 	}
-	for _, removed := range []string{"blogger", "wordpress", "wordpress_com", "diffbot", "google_cse", "reddit"} {
+	for _, removed := range []string{"blogger", "wordpress", "wordpress_com", "diffbot", "google_cse", "reddit", "brave", "tavily", "exa", "serpapi", "serpstack", "guardian", "currents", "newsapi", "gnews", "mediastack", "worldnews", "hackernews", "forem", "apify", "browserless", "orcid", "wikidata", "gdelt"} {
 		if Enabled(cfg, removed) {
 			t.Fatalf("%s should not be enabled by default", removed)
 		}
 	}
-	for _, provider := range cfg.Routing["search.platform"] {
-		if provider == "blogger" || provider == "wordpress" || provider == "wordpress_com" || provider == "reddit" {
-			t.Fatalf("removed provider %s found in platform route", provider)
-		}
+	if _, ok := cfg.Routing["search.web"]; ok {
+		t.Fatal("generic web search route should not be present")
+	}
+	if _, ok := cfg.Routing["search.news"]; ok {
+		t.Fatal("news search route should not be present")
 	}
 }
 
@@ -72,7 +73,7 @@ func TestLoadMergesNewDefaultProviders(t *testing.T) {
 	if err := os.MkdirAll(".forage", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(".forage", "config.yaml"), []byte("version: 1\nproviders:\n  brave:\n    enabled: true\n  blogger:\n    enabled: true\nrouting:\n  search.platform:\n    - hackernews\n    - blogger\n  search.web:\n    - brave\n    - jina\ncache:\n  database: .forage/state.db\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(".forage", "config.yaml"), []byte("version: 1\nproviders:\n  brave:\n    enabled: true\n  blogger:\n    enabled: true\nrouting:\n  search.web:\n    - brave\n    - jina\n  extract.article:\n    - jina\ncache:\n  database: .forage/state.db\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load()
@@ -85,16 +86,14 @@ func TestLoadMergesNewDefaultProviders(t *testing.T) {
 	if len(cfg.Routing["fetch.url"]) == 0 {
 		t.Fatal("default fetch route should be merged")
 	}
-	if Enabled(cfg, "blogger") {
+	if Enabled(cfg, "blogger") || Enabled(cfg, "brave") {
 		t.Fatal("removed provider should be pruned from older configs")
 	}
-	for _, provider := range cfg.Routing["search.platform"] {
-		if provider == "blogger" {
-			t.Fatal("removed provider should be pruned from older routes")
-		}
+	if _, ok := cfg.Routing["search.web"]; ok {
+		t.Fatal("removed generic search route should be pruned")
 	}
-	if !contains(cfg.Routing["search.web"], "browserbase") {
-		t.Fatal("new default route provider should be appended to older routes")
+	if !contains(cfg.Routing["extract.article"], "browserbase") {
+		t.Fatal("new default extract provider should be appended to older routes")
 	}
 }
 
@@ -104,7 +103,7 @@ func TestRepairWritesNormalizedConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(".forage", "config.yaml")
-	if err := os.WriteFile(path, []byte("version: 1\nproviders:\n  blogger:\n    enabled: true\nrouting:\n  search.web:\n    - google_cse\ncache:\n  database: .forage/state.db\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("version: 1\nproviders:\n  blogger:\n    enabled: true\n  brave:\n    enabled: true\nrouting:\n  search.web:\n    - google_cse\n  extract.article:\n    - apify\ncache:\n  database: .forage/state.db\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, changed, err := Repair()
@@ -121,7 +120,7 @@ func TestRepairWritesNormalizedConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(b), "blogger") || strings.Contains(string(b), "google_cse") {
+	if strings.Contains(string(b), "blogger") || strings.Contains(string(b), "google_cse") || strings.Contains(string(b), "brave") || strings.Contains(string(b), "apify") {
 		t.Fatalf("repaired config still contains removed provider:\n%s", string(b))
 	}
 }

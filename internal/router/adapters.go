@@ -29,12 +29,9 @@ func (a HTTPAdapter) ID() string { return a.id }
 
 func DefaultAdapters(client *http.Client, creds credentials.Store) []Adapter {
 	ids := []string{
-		"brave", "jina", "browserbase", "tavily", "exa", "serpapi", "serpstack",
-		"direct", "firecrawl", "scrapingant", "apify",
-		"gdelt", "guardian", "currents", "gnews", "newsapi", "mediastack", "worldnews",
-		"hackernews", "forem",
+		"jina", "browserbase", "direct", "firecrawl", "scrapingant",
 		"openalex", "semantic_scholar", "crossref", "arxiv", "pubmed", "datacite", "europepmc", "doaj",
-		"opencitations", "orcid", "unpaywall", "wikidata",
+		"opencitations", "unpaywall",
 		"internet_archive", "commoncrawl",
 	}
 	var out []Adapter
@@ -129,7 +126,46 @@ func (a HTTPAdapter) LookupArchive(ctx context.Context, target string, limit int
 		}
 		var out []capability.ArchiveRecord
 		for _, idx := range indexes[:max] {
-			out = append(out, capability.ArchiveRecord{URL: target, ArchiveURL: idx.APIURL, Timestamp: idx.ID, Status: idx.Name, Provider: a.id})
+			if strings.TrimSpace(idx.APIURL) == "" {
+				continue
+			}
+			u := idx.APIURL + "?url=" + url.QueryEscape(target) + "&output=json&limit=1"
+			txt, err := a.getText(ctx, u, nil)
+			if err != nil {
+				continue
+			}
+			for _, line := range strings.Split(txt, "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				var raw struct {
+					URL       string `json:"url"`
+					Timestamp string `json:"timestamp"`
+					Status    string `json:"status"`
+					Mime      string `json:"mime"`
+					Digest    string `json:"digest"`
+				}
+				if err := json.Unmarshal([]byte(line), &raw); err != nil {
+					continue
+				}
+				seenURL := raw.URL
+				if seenURL == "" {
+					seenURL = target
+				}
+				status := raw.Status
+				if status == "" {
+					status = idx.Name
+				}
+				out = append(out, capability.ArchiveRecord{URL: seenURL, ArchiveURL: idx.APIURL, Timestamp: raw.Timestamp, Status: status, MimeType: raw.Mime, Provider: a.id})
+				break
+			}
+			if len(out) >= max {
+				break
+			}
+		}
+		if len(out) == 0 {
+			return nil, ProviderError{Code: "not_found", Message: "target URL was not found in recent Common Crawl indexes"}
 		}
 		return out, nil
 	default:

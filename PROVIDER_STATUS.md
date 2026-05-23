@@ -1,62 +1,61 @@
 # Provider Status
 
-Forage treats provider status conservatively. A provider is not release-verified until it has mocked adapter coverage for success, auth failure, quota/rate-limit failure, malformed responses, timeout behavior, and an optional gated live smoke test.
+Forage now has a narrow provider scope. Providers are included only when they support one of the complementary primitives: `extract`, `scholar`, or `archive`.
 
-## Locally Verified For v0.1.0
+## Live-Supported
 
-These providers have mocked adapter coverage and passed local Windows smoke checks with the repo-local `.env` on 2026-05-22:
+These providers are part of default routing and have adapter coverage in the current codebase:
 
 | Capability | Providers |
 | --- | --- |
-| Web search | Brave, Jina, Browserbase, Tavily, Exa, SerpApi, serpstack |
-| Fetch/extract | Jina Reader, Browserbase Fetch, Firecrawl, ScrapingAnt, Direct HTTP |
-| News | Brave News, Guardian, GNews, NewsAPI, Currents, Mediastack, World News API |
-| Platform | Hacker News, Forem |
-| Scholar | OpenAlex, Crossref, arXiv, PubMed, DataCite, Europe PMC, DOAJ |
-| Archive/corpus | Internet Archive, Common Crawl |
+| Extract | Jina Reader, Browserbase Fetch, Firecrawl, ScrapingAnt, Direct HTTP |
+| Scholar search | OpenAlex, Crossref, arXiv, PubMed/NCBI, DataCite, DOAJ, Europe PMC |
+| DOI/paper enrichment | Crossref, OpenAlex |
+| Archive lookup | Internet Archive, Common Crawl |
 
-Provider verification means success, auth/rate-limit/server-failure handling in tests, and at least one local live smoke command where credentials are required.
+## Metadata-Only
 
-## Metadata Or Credential Only
+These providers remain registered because they map directly to scholarly enrichment or citation workflows, but they are not used by default routing unless explicitly promoted later:
 
-These providers remain registered for setup and future adapters, but should not be treated as production live paths until promoted by tests and smoke checks:
-
-| Provider | Current role |
+| Provider | Reason |
 | --- | --- |
-| Apify | Metadata-only crawl/extract/render provider |
-| Browserless | Metadata-only render provider |
-| GDELT | Metadata-only news/archive provider; public endpoint is slow/unreliable from the Windows release environment |
-| Semantic Scholar | Adapter exists, but unauthenticated public endpoint returned 429 during local smoke checks |
-| Wikidata | Metadata-only identity graph provider |
-| OpenCitations | Metadata-only citation provider |
-| ORCID | Metadata-only identity provider |
-| Unpaywall | Metadata-only open-access provider; requires `UNPAYWALL_EMAIL` when implemented |
+| Semantic Scholar | Useful scholarly graph, but unauthenticated shared limits are not reliable enough for default routing |
+| OpenCitations | Citation API is relevant, but release promotion still needs mocked coverage and live smoke validation |
+| Unpaywall | Open-access DOI enrichment is relevant, but the adapter remains metadata-only until validation is complete |
 
-## Removed From Active Scope
+## Removed
 
-Forage intentionally excludes Reddit, Google Custom Search, Blogger, WordPress API endpoints, Diffbot, ScraperAPI, and Europeana from default setup and routing.
+These providers are intentionally removed from setup, default routing, and product documentation because they do not serve the reduced primitive set:
 
-## Local Verification
+| Category | Providers |
+| --- | --- |
+| Generic web search | Brave, Tavily, Exa, SerpApi, serpstack, Google CSE |
+| News/event feeds | Guardian, Currents, NewsAPI, GNews, Mediastack, World News API, GDELT |
+| Platform/blog/social | Hacker News, Reddit, Forem, Blogger, WordPress |
+| Broad render/crawl | Apify, Browserless |
+| Identity/entity extras | ORCID, Wikidata |
+| Paid/trial/enterprise-only | Diffbot, ScraperAPI, Europeana |
 
-After filling `.env`, use:
+## Validation Commands
 
 ```powershell
-go test ./...
+go run ./cmd/forage config repair
+go run ./cmd/forage providers list
 go run ./cmd/forage providers doctor --all --json
-go run ./cmd/forage search web "openai" --limit 3 --cache refresh --explain-routing --json
-go run ./cmd/forage search news "climate" --limit 3 --cache refresh --explain-routing --json
-go run ./cmd/forage search scholar "machine learning" --limit 3 --cache refresh --json
-go run ./cmd/forage fetch https://example.com --cache refresh --json
+go run ./cmd/forage extract https://example.com --cache refresh --json
+go run ./cmd/forage scholar "machine learning" --limit 3 --cache refresh --json
+go run ./cmd/forage scholar doi "10.1038/nature12373" --cache refresh --json
+go run ./cmd/forage archive https://example.com --cache refresh --json
 ```
+
+Optional live tests should remain gated behind `FORAGE_LIVE_TESTS=1` plus provider-specific environment variables.
 
 ## Quota Tracking
 
-Forage tracks quota in three tiers:
-
-| Tracking mode | Providers | What Forage can do |
+| Mode | Providers | Behavior |
 | --- | --- | --- |
-| Response headers | Brave, Browserbase, OpenAlex, PubMed, Guardian, World News API, Crossref when headers appear | Persist observed limit, remaining, reset, retry, and provider status |
-| Provider endpoint | OpenAlex | Preflight/check account quota with `forage providers quota --preflight --provider openalex` |
-| Manual/inferred | Tavily, Exa, Firecrawl, Jina, GNews, NewsAPI, Currents, Mediastack, SerpApi, serpstack, Semantic Scholar, public/free APIs | Track local attempts, successes, 429s, failures, and documented manual limits; skip providers when local request budget is exhausted |
+| Observed headers | Browserbase, OpenAlex, PubMed, Crossref where headers appear | Persist observed limit, remaining, reset, retry, and provider status |
+| Provider endpoint | OpenAlex | Refresh with `forage providers quota --preflight --provider openalex` |
+| Manual/inferred | Jina, Firecrawl, ScrapingAnt, Semantic Scholar, public scholarly/archive APIs | Track local attempts, successes, 429s, failures, and documented manual limits |
 
-Sources used for quota behavior include Brave rate-limit headers, Browserbase `RateLimit-*` headers, OpenAlex `X-RateLimit-*` headers and `/rate-limit`, Exa QPS docs, Firecrawl 429 behavior, World News API quota headers, Serpstack usage-limit error bodies, and Semantic Scholar public/authenticated rate notes.
+Removed providers are not tracked for quota in the reduced product surface.

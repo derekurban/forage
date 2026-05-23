@@ -203,17 +203,17 @@ func TestSearchAllowsExpiredCooldown(t *testing.T) {
 	}
 }
 
-func TestSearchMissingAuthReturnsAuthMissing(t *testing.T) {
+func TestFetchMissingAuthReturnsAuthMissing(t *testing.T) {
 	st, err := state.Open(filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer st.Close()
 	cfg := config.Default()
-	cfg.Routing[capability.SearchWeb] = []string{"brave", "tavily"}
+	cfg.Routing[capability.FetchURL] = []string{"browserbase", "firecrawl"}
 	r := New(cfg, st, missingCreds{})
 	r.Adapters = map[string]Adapter{}
-	_, ae := r.Search(context.Background(), capability.SearchRequest{Query: "x", Capability: capability.SearchWeb, Limit: 1, CacheMode: "refresh", ExplainRouting: true})
+	_, ae := r.Fetch(context.Background(), capability.FetchRequest{URL: "https://example.com", CacheMode: "refresh", ExplainRouting: true})
 	if ae == nil || ae.Code != "auth_missing" {
 		t.Fatalf("expected auth_missing, got %+v", ae)
 	}

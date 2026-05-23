@@ -75,7 +75,7 @@ func TestPreflightUnsupportedProvider(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	res := New(config.Default(), st, fakeCreds{}).Preflight(context.Background(), "brave")
+	res := New(config.Default(), st, fakeCreds{}).Preflight(context.Background(), "jina")
 	if res.Status != "not_supported" {
 		t.Fatalf("result = %+v", res)
 	}

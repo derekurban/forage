@@ -14,14 +14,12 @@ import (
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/spf13/cobra"
 
-	"github.com/derekurban/forage/internal/agent"
 	"github.com/derekurban/forage/internal/apperr"
 	"github.com/derekurban/forage/internal/capability"
 	"github.com/derekurban/forage/internal/config"
 	"github.com/derekurban/forage/internal/credentials"
 	"github.com/derekurban/forage/internal/doctor"
 	"github.com/derekurban/forage/internal/envfile"
-	"github.com/derekurban/forage/internal/evidence"
 	"github.com/derekurban/forage/internal/output"
 	"github.com/derekurban/forage/internal/providers"
 	"github.com/derekurban/forage/internal/quota"
@@ -61,7 +59,7 @@ func Execute() int {
 func (a *app) rootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "forage",
-		Short:         "Provider-aware research retrieval CLI",
+		Short:         "Complementary research retrieval CLI for extraction, scholarly lookup, and archive checks",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
@@ -72,7 +70,7 @@ func (a *app) rootCmd() *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&a.opts.JSONL, "jsonl", false, "emit JSONL output")
 	cmd.PersistentFlags().BoolVar(&a.opts.NoColor, "no-color", false, "disable styled terminal output")
 	cmd.PersistentFlags().BoolVarP(&a.opts.Verbose, "verbose", "v", false, "include additional diagnostics")
-	cmd.AddCommand(a.configCmd(), a.setupCmd(), a.credentialsCmd(), a.providersCmd(), a.cacheCmd(), a.versionCmd(), a.gatherCmd(), a.retrieveCmd(), a.briefCmd(), a.searchCmd(), a.platformCmd(), a.fetchCmd(), a.extractCmd(), a.enrichCmd(), a.citationsCmd(), a.archiveCmd(), a.corpusCmd(), a.renderCmd(), a.crawlCmd(), a.mapCmd(), a.evidenceCmd(), a.researchPackCmd())
+	cmd.AddCommand(a.extractCmd(), a.scholarCmd(), a.archiveCmd(), a.configCmd(), a.setupCmd(), a.credentialsCmd(), a.providersCmd(), a.cacheCmd(), a.versionCmd())
 	return cmd
 }
 
@@ -436,51 +434,6 @@ func (a *app) versionCmd() *cobra.Command {
 	}
 }
 
-func (a *app) searchCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "search", Short: "Search via provider-aware capabilities"}
-	cmd.AddCommand(a.searchSubcommand("web", capability.SearchWeb), a.searchSubcommand("news", capability.SearchNews), a.searchSubcommand("scholar", capability.SearchScholar), a.searchSubcommand("platform", capability.SearchPlatform))
-	return cmd
-}
-
-func (a *app) searchSubcommand(name, cap string) *cobra.Command {
-	var limit int
-	var freshness, site, cacheMode string
-	var include, exclude []string
-	var explain bool
-	c := &cobra.Command{
-		Use:   name + " QUERY",
-		Short: "Run " + cap,
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, st, cleanup, err := a.loadConfiguredState()
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-			r := router.New(cfg, st, credentials.NewKeychainStore())
-			resp, ae := r.Search(cmd.Context(), capability.SearchRequest{
-				Query: args[0], Capability: cap, Limit: limit, Freshness: freshness, Site: site,
-				Providers: include, ExcludeProviders: exclude, CacheMode: cacheMode, ExplainRouting: explain || a.opts.Verbose,
-			})
-			if ae != nil {
-				return ae
-			}
-			if a.opts.JSON || a.opts.JSONL {
-				return output.Write(cmd.OutOrStdout(), a.opts, cmd.CommandPath(), resp, nil)
-			}
-			return a.writeSearchTable(cmd, resp)
-		},
-	}
-	c.Flags().IntVar(&limit, "limit", 10, "maximum results")
-	c.Flags().StringVar(&freshness, "freshness", "", "freshness hint")
-	c.Flags().StringVar(&site, "site", "", "restrict query to a site/domain where supported")
-	c.Flags().StringSliceVar(&include, "providers", nil, "provider allow-list")
-	c.Flags().StringSliceVar(&exclude, "exclude-provider", nil, "provider deny-list")
-	c.Flags().StringVar(&cacheMode, "cache", "", "cache mode: auto, refresh, only")
-	c.Flags().BoolVar(&explain, "explain-routing", false, "include routing diagnostics")
-	return c
-}
-
 func (a *app) writeSearchTable(cmd *cobra.Command, resp capability.SearchResponse) error {
 	fmt.Fprintln(cmd.OutOrStdout(), output.Heading(a.opts, resp.Capability))
 	t := table.NewWriter()
@@ -508,155 +461,10 @@ func (a *app) writeData(cmd *cobra.Command, data any, diagnostics any) error {
 	return nil
 }
 
-func (a *app) gatherCmd() *cobra.Command {
-	var mode, cacheMode string
-	var limit, fetch, maxChars int
-	var savePack, explain bool
-	cmd := &cobra.Command{
-		Use:   "gather QUERY",
-		Short: "Preferred agent command: gather evidence records for a query",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			wf, cleanup, err := a.agentWorkflow()
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-			resp, ae := wf.Gather(cmd.Context(), agent.GatherRequest{Query: args[0], Mode: mode, Limit: limit, Fetch: fetch, CacheMode: cacheMode, MaxChars: maxChars, SavePack: savePack, ExplainRouting: explain || a.opts.Verbose})
-			if ae != nil {
-				return ae
-			}
-			if a.opts.JSON || a.opts.JSONL {
-				return output.Write(cmd.OutOrStdout(), a.opts, cmd.CommandPath(), resp, nil)
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), output.Heading(a.opts, "Gathered evidence"))
-			t := table.NewWriter()
-			t.SetOutputMirror(cmd.OutOrStdout())
-			t.AppendHeader(table.Row{"#", "Title", "Search", "Fetch", "URL"})
-			for i, rec := range resp.Records {
-				t.AppendRow(table.Row{i + 1, rec.Title, rec.SearchProvider, rec.FetchProvider, rec.URL})
-			}
-			t.Render()
-			if resp.EvidencePackPath != "" {
-				fmt.Fprintf(cmd.OutOrStdout(), "Evidence pack: %s\n", resp.EvidencePackPath)
-			}
-			return nil
-		},
-	}
-	cmd.Flags().StringVar(&mode, "mode", "auto", "retrieval mode: auto, web, news, scholar, mixed")
-	cmd.Flags().IntVar(&limit, "limit", 8, "maximum search candidates")
-	cmd.Flags().IntVar(&fetch, "fetch", 5, "maximum candidates to fetch/extract")
-	cmd.Flags().StringVar(&cacheMode, "cache", "auto", "cache mode: auto, refresh, only")
-	cmd.Flags().IntVar(&maxChars, "max-chars", 4000, "maximum excerpt characters per record")
-	cmd.Flags().BoolVar(&savePack, "save-pack", false, "save gathered records as an evidence pack")
-	cmd.Flags().BoolVar(&explain, "explain-routing", false, "include routing diagnostics")
-	return cmd
-}
-
-func (a *app) retrieveCmd() *cobra.Command {
-	var kind, cacheMode string
-	var maxChars int
-	var savePack, explain bool
-	cmd := &cobra.Command{
-		Use:   "retrieve INPUT",
-		Short: "Preferred agent command: route a query, URL, DOI, paper ID, or author ID",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			wf, cleanup, err := a.agentWorkflow()
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-			resp, ae := wf.Retrieve(cmd.Context(), agent.RetrieveRequest{Input: args[0], Kind: kind, CacheMode: cacheMode, MaxChars: maxChars, SavePack: savePack, ExplainRouting: explain || a.opts.Verbose})
-			if ae != nil {
-				return ae
-			}
-			return a.writeData(cmd, resp, nil)
-		},
-	}
-	cmd.Flags().StringVar(&kind, "kind", "auto", "input kind: auto, url, doi, paper, author, query")
-	cmd.Flags().StringVar(&cacheMode, "cache", "auto", "cache mode: auto, refresh, only")
-	cmd.Flags().IntVar(&maxChars, "max-chars", 4000, "maximum excerpt characters per record")
-	cmd.Flags().BoolVar(&savePack, "save-pack", false, "save retrieved records as an evidence pack")
-	cmd.Flags().BoolVar(&explain, "explain-routing", false, "include routing diagnostics")
-	return cmd
-}
-
-func (a *app) briefCmd() *cobra.Command {
-	var mode, cacheMode, format string
-	var limit, fetch, maxChars int
-	var explain bool
-	cmd := &cobra.Command{
-		Use:   "brief QUERY",
-		Short: "Preferred agent command: render gathered evidence as LLM-ready context",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			wf, cleanup, err := a.agentWorkflow()
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-			resp, ae := wf.Brief(cmd.Context(), agent.BriefRequest{Query: args[0], Mode: mode, Limit: limit, Fetch: fetch, Format: format, CacheMode: cacheMode, MaxChars: maxChars, ExplainRouting: explain || a.opts.Verbose})
-			if ae != nil {
-				return ae
-			}
-			if a.opts.JSON || a.opts.JSONL || strings.EqualFold(format, "json") {
-				opts := a.opts
-				if strings.EqualFold(format, "json") && !opts.JSONL {
-					opts.JSON = true
-				}
-				return output.Write(cmd.OutOrStdout(), opts, cmd.CommandPath(), resp, nil)
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), resp.Context)
-			return nil
-		},
-	}
-	cmd.Flags().StringVar(&format, "format", "markdown", "output format: markdown, json, context")
-	cmd.Flags().StringVar(&mode, "mode", "auto", "retrieval mode: auto, web, news, scholar, mixed")
-	cmd.Flags().IntVar(&limit, "limit", 6, "maximum search candidates")
-	cmd.Flags().IntVar(&fetch, "fetch", 4, "maximum candidates to fetch/extract")
-	cmd.Flags().StringVar(&cacheMode, "cache", "auto", "cache mode: auto, refresh, only")
-	cmd.Flags().IntVar(&maxChars, "max-chars", 1200, "maximum excerpt characters per record")
-	cmd.Flags().BoolVar(&explain, "explain-routing", false, "include routing diagnostics")
-	return cmd
-}
-
-func (a *app) fetchCmd() *cobra.Command {
-	var cacheMode string
-	var include, exclude []string
-	var explain bool
-	cmd := &cobra.Command{
-		Use:   "fetch URL",
-		Short: "Fetch a URL",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, st, cleanup, err := a.loadConfiguredState()
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-			r := router.New(cfg, st, credentials.NewKeychainStore())
-			resp, ae := r.Fetch(cmd.Context(), capability.FetchRequest{URL: args[0], Providers: include, ExcludeProviders: exclude, CacheMode: cacheMode, ExplainRouting: explain || a.opts.Verbose})
-			if ae != nil {
-				return ae
-			}
-			if a.opts.JSON || a.opts.JSONL {
-				return output.Write(cmd.OutOrStdout(), a.opts, cmd.CommandPath(), resp, nil)
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), output.Heading(a.opts, "Fetched document"))
-			fmt.Fprintf(cmd.OutOrStdout(), "URL: %s\nProvider: %s\nQuality: %.2f\n\n%s\n", resp.Document.URL, resp.Document.Provider, resp.Document.QualityScore, preview(resp.Document.Markdown, resp.Document.PlainText))
-			return nil
-		},
-	}
-	cmd.Flags().StringVar(&cacheMode, "cache", "", "cache mode: auto, refresh, only")
-	cmd.Flags().StringSliceVar(&include, "providers", nil, "provider allow-list")
-	cmd.Flags().StringSliceVar(&exclude, "exclude-provider", nil, "provider deny-list")
-	cmd.Flags().BoolVar(&explain, "explain-routing", false, "include routing diagnostics")
-	return cmd
-}
-
 func (a *app) extractCmd() *cobra.Command {
 	var stdin bool
+	var cacheMode string
+	var explain bool
 	cmd := &cobra.Command{
 		Use:   "extract [URL_OR_FILE]",
 		Short: "Extract URLs into readable documents",
@@ -683,7 +491,7 @@ func (a *app) extractCmd() *cobra.Command {
 			r := router.New(cfg, st, credentials.NewKeychainStore())
 			var docs []capability.FetchResponse
 			for _, u := range urls {
-				resp, ae := r.Fetch(cmd.Context(), capability.FetchRequest{URL: u, ExplainRouting: a.opts.Verbose})
+				resp, ae := r.Fetch(cmd.Context(), capability.FetchRequest{URL: u, CacheMode: cacheMode, ExplainRouting: explain || a.opts.Verbose})
 				if ae != nil && len(urls) == 1 {
 					return ae
 				}
@@ -695,6 +503,8 @@ func (a *app) extractCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&stdin, "stdin", false, "read URLs from stdin")
+	cmd.Flags().StringVar(&cacheMode, "cache", "", "cache mode: auto, refresh, only")
+	cmd.Flags().BoolVar(&explain, "explain-routing", false, "include routing diagnostics")
 	return cmd
 }
 
@@ -812,28 +622,101 @@ func (a *app) credentialsCmd() *cobra.Command {
 	return cmd
 }
 
-func (a *app) archiveCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "archive", Short: "Archive lookup"}
-	cmd.AddCommand(&cobra.Command{Use: "lookup URL", Short: "Look up archived URL", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		r, cleanup, err := a.router()
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-		resp, ae := r.ArchiveLookup(cmd.Context(), capability.DataRequest{URL: args[0], CacheMode: "auto", ExplainRouting: a.opts.Verbose})
-		if ae != nil {
-			return ae
-		}
-		return a.writeData(cmd, resp, nil)
-	}})
+func (a *app) scholarCmd() *cobra.Command {
+	var limit int
+	var cacheMode string
+	var explain bool
+	cmd := &cobra.Command{
+		Use:   "scholar QUERY",
+		Short: "Search and enrich scholarly literature",
+		Long:  "Search and enrich scholarly literature through scholarly APIs. This complements native web search with paper metadata, DOI lookup, open-access checks, and citation expansion.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.runSearch(cmd, capability.SearchScholar, args[0], nil, nil, limit, "", "", cacheMode, explain || a.opts.Verbose)
+		},
+	}
+	cmd.Flags().IntVar(&limit, "limit", 10, "maximum scholarly records")
+	cmd.PersistentFlags().StringVar(&cacheMode, "cache", "", "cache mode: auto, refresh, only")
+	cmd.PersistentFlags().BoolVar(&explain, "explain-routing", false, "include routing diagnostics")
+	cmd.AddCommand(&cobra.Command{
+		Use:   "doi DOI",
+		Short: "Enrich a DOI with scholarly metadata and open-access data",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, cleanup, err := a.router()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			resp, ae := r.EnrichDOI(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: cacheMode, ExplainRouting: explain || a.opts.Verbose})
+			if ae != nil {
+				return ae
+			}
+			return a.writeData(cmd, resp, nil)
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "paper ID_OR_DOI",
+		Short: "Enrich a scholarly work by provider ID or DOI",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, cleanup, err := a.router()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			resp, ae := r.EnrichPaper(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: cacheMode, ExplainRouting: explain || a.opts.Verbose})
+			if ae != nil {
+				return ae
+			}
+			return a.writeData(cmd, resp, nil)
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "citations DOI",
+		Short: "Look up citation metadata for a DOI",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, cleanup, err := a.router()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			resp, ae := r.Citations(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: cacheMode, ExplainRouting: explain || a.opts.Verbose})
+			if ae != nil {
+				return ae
+			}
+			return a.writeData(cmd, resp, nil)
+		},
+	})
 	return cmd
 }
 
-func (a *app) platformCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "platform", Short: "Platform-specific discovery"}
-	cmd.AddCommand(&cobra.Command{Use: "hn QUERY", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		return a.runSearch(cmd, capability.SearchPlatform, args[0], []string{"hackernews"}, nil, 10, "", "", "auto", false)
-	}})
+func (a *app) archiveCmd() *cobra.Command {
+	var cacheMode string
+	var explain bool
+	var limit int
+	cmd := &cobra.Command{
+		Use:   "archive URL",
+		Short: "Check historical availability for a URL",
+		Long:  "Check whether a URL has historical records through Internet Archive and Common Crawl. This complements native web search with source verification and historical availability.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, cleanup, err := a.router()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			resp, ae := r.ArchiveLookup(cmd.Context(), capability.DataRequest{URL: args[0], Limit: limit, CacheMode: cacheMode, ExplainRouting: explain || a.opts.Verbose})
+			if ae != nil {
+				return ae
+			}
+			return a.writeData(cmd, resp, nil)
+		},
+	}
+	cmd.Flags().StringVar(&cacheMode, "cache", "", "cache mode: auto, refresh, only")
+	cmd.Flags().BoolVar(&explain, "explain-routing", false, "include routing diagnostics")
+	cmd.Flags().IntVar(&limit, "limit", 5, "maximum archive records")
 	return cmd
 }
 
@@ -852,250 +735,6 @@ func (a *app) runSearch(cmd *cobra.Command, cap, query string, include, exclude 
 		return output.Write(cmd.OutOrStdout(), a.opts, cmd.CommandPath(), resp, nil)
 	}
 	return a.writeSearchTable(cmd, resp)
-}
-
-func (a *app) enrichCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "enrich", Short: "Entity, DOI, and paper enrichment"}
-	cmd.AddCommand(&cobra.Command{Use: "doi DOI", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		r, cleanup, err := a.router()
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-		resp, ae := r.EnrichDOI(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: "auto", ExplainRouting: a.opts.Verbose})
-		if ae != nil {
-			return ae
-		}
-		return a.writeData(cmd, resp, nil)
-	}})
-	cmd.AddCommand(&cobra.Command{Use: "paper ID_OR_DOI", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		r, cleanup, err := a.router()
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-		resp, ae := r.EnrichPaper(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: "auto", ExplainRouting: a.opts.Verbose})
-		if ae != nil {
-			return ae
-		}
-		return a.writeData(cmd, resp, nil)
-	}})
-	cmd.AddCommand(&cobra.Command{Use: "author ORCID", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		r, cleanup, err := a.router()
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-		resp, ae := r.EnrichAuthor(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: "auto", ExplainRouting: a.opts.Verbose})
-		if ae != nil {
-			return ae
-		}
-		return a.writeData(cmd, resp, nil)
-	}})
-	return cmd
-}
-
-func (a *app) citationsCmd() *cobra.Command {
-	return &cobra.Command{Use: "citations DOI", Short: "Expand citation graph", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		r, cleanup, err := a.router()
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-		resp, ae := r.Citations(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: "auto", ExplainRouting: a.opts.Verbose})
-		if ae != nil {
-			return ae
-		}
-		return a.writeData(cmd, resp, nil)
-	}}
-}
-
-func (a *app) corpusCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "corpus", Short: "Open corpus access"}
-	for _, name := range []string{"gdelt", "commoncrawl", "internet-archive"} {
-		n := name
-		cmd.AddCommand(&cobra.Command{Use: n, Short: "Query " + n, RunE: func(cmd *cobra.Command, args []string) error {
-			switch n {
-			case "commoncrawl":
-				r, cleanup, err := a.router()
-				if err != nil {
-					return err
-				}
-				defer cleanup()
-				resp, ae := r.CorpusQuery(cmd.Context(), capability.DataRequest{Query: "indexes", Providers: []string{"commoncrawl"}, CacheMode: "auto", ExplainRouting: a.opts.Verbose})
-				if ae != nil {
-					return ae
-				}
-				return a.writeData(cmd, resp, nil)
-			case "gdelt":
-				query := "forage"
-				if len(args) > 0 {
-					query = strings.Join(args, " ")
-				}
-				r, cleanup, err := a.router()
-				if err != nil {
-					return err
-				}
-				defer cleanup()
-				resp, ae := r.CorpusQuery(cmd.Context(), capability.DataRequest{Query: query, Providers: []string{"gdelt"}, CacheMode: "auto", ExplainRouting: a.opts.Verbose, Limit: 10})
-				if ae != nil {
-					return ae
-				}
-				return a.writeData(cmd, resp, nil)
-			default:
-				r, cleanup, err := a.router()
-				if err != nil {
-					return err
-				}
-				defer cleanup()
-				resp, ae := r.CorpusQuery(cmd.Context(), capability.DataRequest{Query: n, Providers: []string{n}, CacheMode: "auto", ExplainRouting: a.opts.Verbose})
-				if ae != nil {
-					return ae
-				}
-				return a.writeData(cmd, resp, nil)
-			}
-		}})
-	}
-	return cmd
-}
-
-func (a *app) renderCmd() *cobra.Command {
-	return &cobra.Command{Use: "render URL", Short: "Render a browser page", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		r, cleanup, err := a.router()
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-		resp, ae := r.Render(cmd.Context(), capability.FetchRequest{URL: args[0], ExplainRouting: a.opts.Verbose, CacheMode: "auto"})
-		if ae != nil {
-			return ae
-		}
-		return a.writeData(cmd, resp, nil)
-	}}
-}
-
-func (a *app) crawlCmd() *cobra.Command {
-	var maxPages int
-	c := &cobra.Command{Use: "crawl URL", Short: "Bounded same-domain crawl", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if maxPages <= 0 {
-			return fmt.Errorf("--max-pages must be greater than 0")
-		}
-		r, cleanup, err := a.router()
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-		resp, ae := r.Crawl(cmd.Context(), capability.DataRequest{URL: args[0], MaxPages: maxPages, CacheMode: "auto", ExplainRouting: a.opts.Verbose})
-		if ae != nil {
-			return ae
-		}
-		return a.writeData(cmd, resp, nil)
-	}}
-	c.Flags().IntVar(&maxPages, "max-pages", 10, "maximum pages to crawl")
-	return c
-}
-
-func (a *app) mapCmd() *cobra.Command {
-	var maxPages int
-	c := &cobra.Command{Use: "map URL", Short: "Map same-domain URLs", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		r, cleanup, err := a.router()
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-		resp, ae := r.Crawl(cmd.Context(), capability.DataRequest{URL: args[0], MaxPages: maxPages, Providers: []string{"direct"}, CacheMode: "auto", ExplainRouting: a.opts.Verbose})
-		if ae != nil {
-			return ae
-		}
-		var urls []string
-		if docs, ok := resp.Data.([]capability.ExtractedDocument); ok {
-			for _, d := range docs {
-				urls = append(urls, d.URL)
-			}
-			resp.Data = map[string]any{"start_url": args[0], "urls": urls}
-		}
-		return a.writeData(cmd, resp, nil)
-	}}
-	c.Flags().IntVar(&maxPages, "max-pages", 25, "maximum pages to inspect")
-	return c
-}
-
-func (a *app) evidenceCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "evidence", Short: "Evidence pack workflows"}
-	var query string
-	create := &cobra.Command{Use: "create", Short: "Create evidence pack from JSON stdin", RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
-		if err != nil {
-			return err
-		}
-		b, _ := io.ReadAll(cmd.InOrStdin())
-		items, err := parseEvidenceInput(b)
-		if err != nil {
-			return err
-		}
-		path, pack, err := evidence.Create(config.Dir(), query, cfg.Policy, items)
-		if err != nil {
-			return err
-		}
-		return a.writeData(cmd, map[string]any{"path": path, "pack": pack}, nil)
-	}}
-	create.Flags().StringVar(&query, "query", "", "source query/question")
-	cmd.AddCommand(create)
-	cmd.AddCommand(&cobra.Command{Use: "inspect PATH", Short: "Inspect evidence pack", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		pack, err := evidence.Inspect(args[0])
-		if err != nil {
-			return err
-		}
-		return a.writeData(cmd, pack, nil)
-	}})
-	return cmd
-}
-
-func parseEvidenceInput(b []byte) ([]any, error) {
-	input := strings.TrimSpace(string(b))
-	if input == "" {
-		return nil, nil
-	}
-	var item any
-	if err := json.Unmarshal([]byte(input), &item); err == nil {
-		if items, ok := item.([]any); ok {
-			return items, nil
-		}
-		return []any{item}, nil
-	}
-	var items []any
-	for _, line := range strings.Split(input, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var v any
-		if err := json.Unmarshal([]byte(line), &v); err != nil {
-			return nil, err
-		}
-		items = append(items, v)
-	}
-	return items, nil
-}
-
-func (a *app) researchPackCmd() *cobra.Command {
-	return &cobra.Command{Use: "research-pack QUERY", Short: "Create a research evidence pack from web/scholar discovery", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, st, cleanup, err := a.loadConfiguredState()
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-		r := router.New(cfg, st, credentials.NewKeychainStore())
-		resp, ae := r.Search(cmd.Context(), capability.SearchRequest{Query: args[0], Capability: capability.SearchScholar, Limit: 5, Providers: []string{"openalex", "crossref", "arxiv"}, CacheMode: "auto", ExplainRouting: true})
-		if ae != nil {
-			return ae
-		}
-		path, pack, err := evidence.Create(config.Dir(), args[0], cfg.Policy, []any{resp})
-		if err != nil {
-			return err
-		}
-		return a.writeData(cmd, map[string]any{"path": path, "pack": pack}, nil)
-	}}
 }
 
 func preview(markdown, text string) string {
@@ -1170,12 +809,4 @@ func (a *app) router() (router.Router, func(), error) {
 		return router.Router{}, cleanup, err
 	}
 	return router.New(cfg, st, credentials.NewKeychainStore()), cleanup, nil
-}
-
-func (a *app) agentWorkflow() (agent.Workflow, func(), error) {
-	cfg, st, cleanup, err := a.loadConfiguredState()
-	if err != nil {
-		return agent.Workflow{}, cleanup, err
-	}
-	return agent.Workflow{Router: router.New(cfg, st, credentials.NewKeychainStore()), Config: cfg, EvidenceDir: config.Dir()}, cleanup, nil
 }

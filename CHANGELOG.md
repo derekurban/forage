@@ -2,10 +2,10 @@
 
 ## Unreleased
 
-- Added agent-first `gather`, `retrieve`, and `brief` commands.
-- Added an internal agent workflow layer that composes search, fetch/extraction, enrichment, routing diagnostics, cache, and evidence pack creation.
-- Added public Go aliases and client helpers for agent gather/retrieve/brief workflows.
-- Reworked README and CLI usage docs so agent commands are documented before lower-level primitives.
+- Reduced the public research surface to the complementary primitives: `extract`, `scholar`, and `archive`.
+- Removed generic web search, news, platform, render, crawl, map, corpus, gather, retrieve, brief, and research-pack commands from root help.
+- Trimmed default provider setup/routing to extraction, scholarly, citation/open-access, and archive providers.
+- Reworked README, CLI usage, provider status, and `.env.example` around Forage as a supplement to native web search.
 
 ## v0.1.6
 

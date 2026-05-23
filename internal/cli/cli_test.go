@@ -40,7 +40,7 @@ func TestVersionDoesNotRequireConfig(t *testing.T) {
 
 func TestCommandRequiresConfig(t *testing.T) {
 	t.Chdir(t.TempDir())
-	_, err := runCLI(t, "fetch", "https://example.com", "--json")
+	_, err := runCLI(t, "extract", "https://example.com", "--json")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -99,9 +99,9 @@ func TestProvidersListJSON(t *testing.T) {
 	}
 }
 
-func TestAgentCommandsAreTopLevel(t *testing.T) {
+func TestComplementaryCommandsAreTopLevel(t *testing.T) {
 	cmd := (&app{}).rootCmd()
-	for _, name := range []string{"gather", "retrieve", "brief"} {
+	for _, name := range []string{"extract", "scholar", "archive"} {
 		found, _, err := cmd.Find([]string{name, "--help"})
 		if err != nil {
 			t.Fatal(err)
@@ -112,24 +112,14 @@ func TestAgentCommandsAreTopLevel(t *testing.T) {
 	}
 }
 
-func TestAgentCommandRequiresConfig(t *testing.T) {
+func TestScholarCommandRequiresConfig(t *testing.T) {
 	t.Chdir(t.TempDir())
-	_, err := runCLI(t, "gather", "openai", "--json")
+	_, err := runCLI(t, "scholar", "openai", "--json")
 	if err == nil {
 		t.Fatal("expected error")
 	}
 	ae, ok := err.(*apperr.Error)
 	if !ok || ae.Code != apperr.CodeConfigMissing {
 		t.Fatalf("err = %#v", err)
-	}
-}
-
-func TestParseEvidenceInputSupportsJSONL(t *testing.T) {
-	items, err := parseEvidenceInput([]byte("{\"url\":\"https://a.example\"}\n{\"url\":\"https://b.example\"}\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(items) != 2 {
-		t.Fatalf("items = %+v", items)
 	}
 }

@@ -1,99 +1,113 @@
 # Forage
 
-Forage is a Windows-first Go CLI for provider-aware research retrieval. It gives agents and shell users stable commands for search, fetch, extraction, provider setup, health checks, quota state, caching, and evidence packs while hiding provider-specific fallback and rate-limit handling during successful runs.
+Forage is a Windows-first Go CLI that complements native web search. It is not trying to be a better generic search engine. Its job is to handle the research primitives that native search tools do not expose reliably:
 
-Forage is not a research agent or report writer. It is the retrieval and evidence I/O layer underneath one.
+- `extract`: turn URLs or URL lists into clean Markdown/text evidence.
+- `scholar`: query and enrich scholarly records, DOIs, and citations.
+- `archive`: check historical/source availability through archive APIs.
 
-## Status
+Native web search should remain the first-pass discovery layer. Forage is the follow-up retrieval layer for extraction, academic metadata, citation/open-access lookup, and historical verification.
 
-`v0.1.0` is the production baseline target. The CLI includes a broad recurring-free provider registry, live support for the first provider set, credential and doctor workflows, SQLite state, and stable JSON output. Providers that are not verified live are exposed honestly as credential-only, metadata-only, or legacy optional.
+## Install
 
-## Install on Windows
-
-Download the latest Windows release zip from GitHub Releases, expand it, and put `forage.exe` on your `PATH`.
-
-PowerShell:
-
-```powershell
-forage version
-forage config init
-forage providers list
-```
-
-From source:
+Download the Windows zip from [GitHub Releases](https://github.com/derekurban/forage/releases), or install with Go:
 
 ```powershell
 go install github.com/derekurban/forage/cmd/forage@latest
 ```
 
-## Configuration
-
-Forage uses one repo-local global config:
-
-```text
-.forage/config.yaml
-```
-
-There is no user-home config, project precedence, or scoped permission model in `v0.1.0`.
-
-Create it with:
+Then initialize repo-local state:
 
 ```powershell
 forage config init
 ```
 
-Secrets are stored in the OS keychain by default. Environment variables are supported as fallback/override, but their values are never persisted to config.
+Forage uses `.forage/config.yaml` in the current repo. It does not use user-home config or per-project permission scopes.
 
-For local validation, copy the repo-local template and fill in provider credentials:
+## Core Commands
+
+Extract a discovered URL into clean text:
+
+```powershell
+forage extract "https://example.com/article" --json
+forage extract urls.txt --jsonl
+```
+
+Search or enrich scholarly material:
+
+```powershell
+forage scholar "memory consolidation transformer models" --json
+forage scholar doi "10.1038/nature12373" --json
+forage scholar paper "10.1038/nature12373" --json
+forage scholar citations "10.1038/nature12373" --json
+```
+
+Check archive availability for a URL:
+
+```powershell
+forage archive "https://example.com/article" --json
+forage archive "https://example.com/article" --limit 3 --json
+```
+
+## Credentials
+
+For local validation, copy the template and fill in only the credentials relevant to extraction and scholarly enrichment:
 
 ```powershell
 Copy-Item .env.example .env
-notepad .env
-forage providers doctor --all --json
 ```
 
-Existing process environment variables take precedence over `.env`. The `.env` file is gitignored and should never be committed.
-
-The template contains only credential fields Forage should validate or keep ready for the recurring-free provider set. Blogger, WordPress API endpoints, Reddit, Google Custom Search, Diffbot, and ScraperAPI are intentionally excluded. Semantic Scholar remains metadata-only until its public shared limits are reliable enough for release routing.
-
-## Agent-First Usage
-
-For agents, start with the high-level commands. They compose search, fetch/extraction, cache, quota-aware fallback, and evidence metadata behind one stable interface.
+`.env` is gitignored and loaded before credential checks. Existing process environment variables win over `.env`. OS keychain storage is still supported for longer-lived local setup:
 
 ```powershell
-forage gather "latest OpenAI model pricing" --json
-forage retrieve "https://example.com" --json
-forage retrieve "10.1038/nature12373" --json
-forage brief "Browserbase search API docs" --format markdown
-```
-
-Use `gather` when an agent needs evidence records, `retrieve` when it has an unknown input type, and `brief` when it needs compact source blocks for an LLM context window.
-
-Use `--explain-routing` or `--verbose` to inspect provider attempts. Normal output hides intermediate provider failures when fallback succeeds.
-
-## Advanced Primitives
-
-The lower-level commands remain available for debugging, provider checks, and explicit routing:
-
-```powershell
-forage setup
 forage credentials list
-forage providers doctor
-forage providers quota --preflight --provider openalex
-forage search web "query" --json
-forage search scholar "machine learning" --json
-forage fetch https://example.com --json
-forage extract urls.txt --jsonl
-forage research-pack "machine learning" --json
+forage credentials set jina --from-env JINA_API_KEY
+forage credentials set firecrawl --from-env FIRECRAWL_API_KEY
 ```
 
-## Provider Policy
+The reduced credential surface is:
 
-The default registry includes providers that appear to support recurring free usage, free public APIs, or free-account recurring quotas. Trial-only, paid-only, and one-off credit offers are not included in default setup or routing.
+- Extraction: `JINA_API_KEY`, `FIRECRAWL_API_KEY`, `BROWSERBASE_API_KEY`, `SCRAPINGANT_API_KEY`
+- Scholarly/citations: `OPENALEX_API_KEY`, `NCBI_API_KEY`, `OPENCITATIONS_ACCESS_TOKEN`, `UNPAYWALL_EMAIL`
+- Contact identity: `FORAGE_CONTACT_EMAIL`
 
-If no configured provider can satisfy a command, Forage fails clearly with a structured error and setup hints instead of inventing weak fallback sources.
+Most scholarly/archive providers need no key: Crossref, arXiv, DataCite, DOAJ, Europe PMC, Internet Archive, and Common Crawl.
 
-See [PROVIDER_STATUS.md](PROVIDER_STATUS.md) for the current live, metadata-only, and release-verification targets.
+## Operational Commands
+
+These commands exist to keep the three primitives healthy:
+
+```powershell
+forage providers list
+forage providers doctor --all
+forage providers quota
+forage providers quota --preflight --provider openalex
+forage cache status
+forage config repair
+forage version
+```
+
+Use `--json` for agent-safe output. Use `--verbose` or `--explain-routing` when you need provider diagnostics.
+
+## Provider Scope
+
+Forage intentionally supports only providers that serve `extract`, `scholar`, or `archive`.
+
+Kept:
+
+- Extraction: Jina Reader, Browserbase Fetch, Firecrawl, ScrapingAnt, Direct HTTP
+- Scholar: OpenAlex, Crossref, arXiv, PubMed/NCBI, DataCite, DOAJ, Europe PMC, Semantic Scholar metadata-only
+- Enrichment/citations: Unpaywall metadata-only, OpenCitations metadata-only
+- Archive: Internet Archive, Common Crawl
+
+Removed from the product surface:
+
+- Generic web search: Brave, Tavily, Exa, SerpApi, serpstack, Google CSE
+- News/event feeds: Guardian, Currents, NewsAPI, GNews, Mediastack, World News API, GDELT
+- Platform/blog/social sources: Hacker News, Reddit, Forem, Blogger, WordPress
+- Broad render/crawl vendors without a current extraction role: Apify, Browserless
+- Identity/entity extras: ORCID, Wikidata
+- Paid/trial/enterprise-only providers: Diffbot, ScraperAPI, Europeana
 
 ## Development
 
@@ -102,4 +116,4 @@ go test ./...
 go build ./cmd/forage
 ```
 
-Optional live tests should be gated behind `FORAGE_LIVE_TESTS=1` and provider-specific environment variables to avoid accidental quota usage.
+Live provider tests should stay opt-in and gated by `FORAGE_LIVE_TESTS=1` plus provider-specific credentials.

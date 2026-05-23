@@ -12,7 +12,7 @@ func TestRegistryContainsRecurringFreeProductionSet(t *testing.T) {
 	if len(ps) < 12 {
 		t.Fatalf("Registry() returned %d providers", len(ps))
 	}
-	for _, id := range []string{"brave", "jina", "browserbase", "tavily", "exa", "hackernews", "crossref", "arxiv"} {
+	for _, id := range []string{"jina", "browserbase", "firecrawl", "scrapingant", "direct", "crossref", "arxiv", "openalex", "pubmed", "internet_archive", "commoncrawl"} {
 		p, ok := ByID(id)
 		if !ok {
 			t.Fatalf("missing provider %s", id)
@@ -31,33 +31,20 @@ func TestRegistryContainsRecurringFreeProductionSet(t *testing.T) {
 }
 
 func TestRegistryCredentialFields(t *testing.T) {
-	brave, ok := ByID("brave")
+	openalex, ok := ByID("openalex")
 	if !ok {
-		t.Fatal("missing brave")
+		t.Fatal("missing openalex")
 	}
-	if len(brave.CredentialFields) != 2 {
-		t.Fatalf("brave credential fields = %+v", brave.CredentialFields)
+	if len(openalex.CredentialFields) != 1 {
+		t.Fatalf("openalex credential fields = %+v", openalex.CredentialFields)
 	}
-	if brave.CredentialFields[0].EnvVar != "BRAVE_SEARCH_API_KEY" || !brave.CredentialFields[0].Required {
-		t.Fatalf("unexpected brave search field: %+v", brave.CredentialFields[0])
-	}
-	if brave.CredentialFields[1].EnvVar != "BRAVE_ANSWERS_API_KEY" || brave.CredentialFields[1].Required {
-		t.Fatalf("unexpected brave answers field: %+v", brave.CredentialFields[1])
-	}
-	orcid, ok := ByID("orcid")
-	if !ok {
-		t.Fatal("missing orcid")
-	}
-	if orcid.SetupGroup != "oauth" {
-		t.Fatalf("orcid group = %s", orcid.SetupGroup)
-	}
-	if len(orcid.CredentialFields) != 2 {
-		t.Fatalf("orcid credential fields = %+v", orcid.CredentialFields)
+	if openalex.CredentialFields[0].EnvVar != "OPENALEX_API_KEY" || openalex.CredentialFields[0].Required {
+		t.Fatalf("openalex key should be optional: %+v", openalex.CredentialFields[0])
 	}
 }
 
 func TestRemovedProvidersAreNotRegistered(t *testing.T) {
-	for _, id := range []string{"blogger", "wordpress", "wordpress_com", "diffbot", "scraperapi", "google_cse", "reddit"} {
+	for _, id := range []string{"blogger", "wordpress", "wordpress_com", "diffbot", "scraperapi", "google_cse", "reddit", "brave", "tavily", "exa", "serpapi", "serpstack", "guardian", "currents", "newsapi", "gnews", "mediastack", "worldnews", "hackernews", "forem", "apify", "browserless", "orcid", "wikidata", "gdelt"} {
 		if _, ok := ByID(id); ok {
 			t.Fatalf("%s should not be registered", id)
 		}
@@ -81,7 +68,7 @@ func TestSemanticScholarUsesNoKeyPublicEndpoints(t *testing.T) {
 }
 
 func TestQuotaTrackingMetadata(t *testing.T) {
-	for _, id := range []string{"brave", "browserbase", "openalex", "worldnews", "serpstack"} {
+	for _, id := range []string{"jina", "browserbase", "openalex", "firecrawl", "crossref", "internet_archive", "commoncrawl"} {
 		p, ok := ByID(id)
 		if !ok {
 			t.Fatalf("missing %s", id)

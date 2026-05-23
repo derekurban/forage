@@ -67,57 +67,32 @@ func Default() Config {
 		Budget:      BudgetConfig{MaxCostUSD: 0},
 		Credentials: CredentialConfig{Store: "keychain"},
 		Providers: map[string]ProviderConfig{
-			"hackernews":       {Enabled: true},
 			"crossref":         {Enabled: true},
 			"arxiv":            {Enabled: true},
-			"brave":            {Enabled: true},
 			"jina":             {Enabled: true},
-			"tavily":           {Enabled: true},
-			"exa":              {Enabled: true},
 			"direct":           {Enabled: true},
-			"serpapi":          {Enabled: true},
-			"serpstack":        {Enabled: true},
 			"firecrawl":        {Enabled: true},
 			"scrapingant":      {Enabled: true},
-			"apify":            {Enabled: true},
 			"browserbase":      {Enabled: true},
 			"openalex":         {Enabled: true},
 			"semantic_scholar": {Enabled: true},
 			"pubmed":           {Enabled: true},
 			"datacite":         {Enabled: true},
-			"wikidata":         {Enabled: true},
 			"opencitations":    {Enabled: true},
-			"orcid":            {Enabled: true},
 			"unpaywall":        {Enabled: true},
 			"doaj":             {Enabled: true},
 			"europepmc":        {Enabled: true},
-			"gdelt":            {Enabled: true},
 			"internet_archive": {Enabled: true},
 			"commoncrawl":      {Enabled: true},
-			"guardian":         {Enabled: true},
-			"currents":         {Enabled: true},
-			"newsapi":          {Enabled: true},
-			"gnews":            {Enabled: true},
-			"mediastack":       {Enabled: true},
-			"worldnews":        {Enabled: true},
-			"forem":            {Enabled: true},
-			"browserless":      {Enabled: true},
 		},
 		Routing: map[string][]string{
-			"search.web":      {"brave", "jina", "browserbase", "tavily", "exa", "serpapi", "serpstack"},
-			"search.news":     {"brave", "guardian", "gnews", "newsapi", "currents", "mediastack", "worldnews", "serpapi", "gdelt"},
-			"search.scholar":  {"openalex", "semantic_scholar", "crossref", "arxiv", "pubmed", "datacite", "europepmc", "doaj"},
-			"search.platform": {"hackernews", "forem"},
-			"extract.article": {"jina", "browserbase", "firecrawl", "scrapingant", "apify", "direct"},
+			"search.scholar":  {"openalex", "crossref", "arxiv", "pubmed", "datacite", "europepmc", "doaj", "semantic_scholar"},
+			"extract.article": {"jina", "browserbase", "firecrawl", "scrapingant", "direct"},
 			"fetch.url":       {"jina", "browserbase", "firecrawl", "scrapingant", "direct"},
-			"archive.lookup":  {"internet_archive", "commoncrawl", "gdelt"},
+			"archive.lookup":  {"internet_archive", "commoncrawl"},
 			"enrich.doi":      {"crossref", "unpaywall", "openalex"},
 			"enrich.paper":    {"openalex", "semantic_scholar"},
-			"enrich.author":   {"orcid", "openalex", "wikidata"},
 			"citations.doi":   {"opencitations", "crossref", "openalex", "semantic_scholar"},
-			"corpus.query":    {"commoncrawl", "gdelt", "internet_archive"},
-			"render.browser":  {"browserbase", "scrapingant", "browserless", "apify"},
-			"crawl.site":      {"firecrawl", "apify", "direct"},
 		},
 		Cache: CacheConfig{Database: DBPath(), Mode: "auto", TTLHours: 24},
 	}
@@ -207,13 +182,18 @@ func Load() (Config, error) {
 		}
 	}
 	for cap, route := range cfg.Routing {
+		defaultRoute, supportedCap := Default().Routing[cap]
+		if !supportedCap {
+			delete(cfg.Routing, cap)
+			continue
+		}
 		var kept []string
 		for _, id := range route {
 			if known[id] {
 				kept = append(kept, id)
 			}
 		}
-		for _, id := range Default().Routing[cap] {
+		for _, id := range defaultRoute {
 			if known[id] && !contains(kept, id) {
 				kept = append(kept, id)
 			}

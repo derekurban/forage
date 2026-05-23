@@ -1,234 +1,151 @@
-# Forage CLI Usage
+# CLI Usage
 
-`forage` is a provider-aware research retrieval CLI. It exposes stable capabilities and hides provider fallback, quota cooldown, and credential lookup behind the router.
+`forage` is a complementary retrieval CLI for agents. Use native web search for broad discovery. Use Forage when you need clean extracted page text, scholarly metadata/citations, or archive verification.
 
-## Agent-First Commands
-
-These are the preferred commands for agents. They return evidence records rather than forcing the caller to manually chain `search`, `fetch`, and `extract`.
-
-```powershell
-forage gather "latest OpenAI model pricing" --json
-forage retrieve "https://example.com" --json
-forage retrieve "10.1038/nature12373" --json
-forage brief "Browserbase search API docs" --format markdown
-```
-
-Use primitives such as `search web`, `fetch`, and `extract` when you need explicit provider debugging or a single low-level capability.
-
-### `gather`
-
-Collect usable evidence records for a query:
-
-```powershell
-forage gather "Tavily API rate limits" --mode auto --limit 8 --fetch 5 --json
-forage gather "AI regulation" --mode mixed --limit 9 --fetch 6 --save-pack --json
-```
-
-Useful flags:
-
-```powershell
---mode auto|web|news|scholar|mixed
---limit 8
---fetch 5
---cache auto|refresh|only
---max-chars 4000
---save-pack
---explain-routing
-```
-
-JSON `data` contains:
+All commands support stable JSON envelopes with:
 
 ```json
 {
-  "query": "Tavily API rate limits",
-  "mode": "auto",
-  "records": [
-    {
-      "title": "...",
-      "url": "...",
-      "source_domain": "...",
-      "search_provider": "brave",
-      "fetch_provider": "jina",
-      "text": "...",
-      "retrieved_at": "...",
-      "content_hash": "...",
-      "quality_score": 0.95,
-      "cache_status": "miss"
-    }
-  ],
-  "evidence_pack_path": ".forage/evidence/<id>.json"
+  "ok": true,
+  "command": "forage ...",
+  "generated_at": "...",
+  "data": {},
+  "diagnostics": null,
+  "error": null
 }
 ```
 
-### `retrieve`
+## `extract`
 
-Route arbitrary input without requiring the caller to classify it:
-
-```powershell
-forage retrieve "Browserbase free tier limits" --json
-forage retrieve "https://example.com" --json
-forage retrieve "10.1038/nature12373" --json
-forage retrieve "0000-0002-1825-0097" --json
-```
-
-Useful flags:
+Extract one URL or a file of URLs into normalized documents.
 
 ```powershell
---kind auto|url|doi|paper|author|query
---cache auto|refresh|only
---max-chars 4000
---save-pack
---explain-routing
+forage extract "https://example.com/article" --json
+forage extract urls.txt --jsonl
+Get-Content urls.txt | forage extract --stdin --jsonl
 ```
 
-JSON `data` contains `input`, inferred or forced `kind`, `result`, normalized `records`, optional `routing`, and optional `evidence_pack_path`.
+Flags:
 
-### `brief`
+```text
+--cache              auto, refresh, or only
+--explain-routing    include provider routing diagnostics
+```
 
-Render gathered evidence as compact source-numbered context blocks:
+Returned records include URL, title when available, Markdown/plain text, provider, extraction method, retrieved timestamp, content hash, quality score, and cache status.
+
+Use this after native search has found candidate sources.
+
+## `scholar`
+
+Search and enrich scholarly material through scholarly APIs.
 
 ```powershell
-forage brief "Browserbase search API docs" --format markdown
-forage brief "OpenAlex API rate limits" --format context --max-chars 1000
-forage brief "machine learning benchmarks" --mode mixed --json
+forage scholar "memory consolidation transformer models" --limit 10 --json
+forage scholar doi "10.1038/nature12373" --json
+forage scholar paper "10.1038/nature12373" --json
+forage scholar citations "10.1038/nature12373" --json
 ```
 
-Useful flags:
+Flags:
+
+```text
+--limit              maximum scholarly records for query search
+--cache              auto, refresh, or only
+--explain-routing    include provider routing diagnostics
+```
+
+Use this when native search is not enough for DOI metadata, paper identifiers, citation expansion, PubMed/arXiv-style records, open-access lookup, or dataset metadata.
+
+## `archive`
+
+Check historical/source availability for a URL.
 
 ```powershell
---format markdown|json|context
---mode auto|web|news|scholar|mixed
---limit 6
---fetch 4
---cache auto|refresh|only
---max-chars 1200
---explain-routing
+forage archive "https://example.com/article" --json
+forage archive "https://example.com/article" --explain-routing --json
 ```
 
-Markdown/context output is designed to be pasted directly into an LLM context window. JSON output includes both `records` and the rendered `context`.
+Flags:
 
-## Setup
+```text
+--limit              maximum archive records
+--cache              auto, refresh, or only
+--explain-routing    include provider routing diagnostics
+```
 
-Create the global config:
+Returned records can include Wayback availability and Common Crawl index metadata. Use this to verify disappeared pages, old sources, and historical web presence.
+
+## Setup And Health
+
+Initialize repo-local config:
 
 ```powershell
 forage config init
-forage config repair
 ```
 
-Interactive setup stores API keys in the OS keychain:
-
-```powershell
-forage setup
-```
-
-Non-interactive credential setup:
-
-```powershell
-"<api-key>" | forage credentials set brave --value-stdin
-forage credentials set brave --field search_api_key --from-env BRAVE_SEARCH_API_KEY
-forage credentials set brave --field answers_api_key --from-env BRAVE_ANSWERS_API_KEY
-forage credentials list
-forage credentials check brave
-forage credentials remove brave
-```
-
-Secrets are not written to `.forage/config.yaml`.
-
-For local validation without manually exporting variables:
+Load local validation credentials:
 
 ```powershell
 Copy-Item .env.example .env
-notepad .env
-forage providers doctor --all --json
 ```
 
-`.env` is repo-local, gitignored, and loaded before credential checks. Existing process environment variables win over values from `.env`.
+Store stable credentials in the OS keychain if desired:
 
-No credentials are needed for Hacker News, Crossref, arXiv, DataCite, Wikidata, Internet Archive, Common Crawl, Forem, DOAJ, or Europe PMC. Semantic Scholar and GDELT are registered as metadata-only until their public endpoints are reliable from the Windows release environment.
+```powershell
+forage credentials list
+forage credentials set jina --from-env JINA_API_KEY
+forage credentials check jina
+forage credentials remove jina
+```
 
-Blogger, WordPress API endpoints, Reddit, Google Custom Search, Diffbot, ScraperAPI, and Europeana are intentionally excluded from the v0.1 provider setup.
-
-See `PROVIDER_STATUS.md` for the current release-verification target and metadata-only provider list.
-
-## Health and Quota
+Check provider readiness:
 
 ```powershell
 forage providers list
-forage providers doctor
-forage providers doctor jina
-forage providers doctor --capability search.web
-forage providers doctor --all
+forage providers doctor --all --json
 forage providers quota
-forage providers quota --provider brave
 forage providers quota --preflight --provider openalex
-forage providers quota --reset-local brave
 ```
 
-Use `--json` for agent-safe output and `--verbose` or `--explain-routing` for provider attempts.
-
-## Advanced Search Primitives
+Repair older configs after provider trimming:
 
 ```powershell
-forage search web "query" --limit 10 --json
-forage search news "query" --providers gdelt,guardian --json
-forage search scholar "query" --providers openalex,crossref,arxiv --json
-forage search platform "query" --providers hackernews,forem --json
+forage config repair
 ```
 
-Useful flags:
+## Credential Fields
 
-```powershell
---limit 20
---site example.com
---providers brave,jina,tavily
---exclude-provider brave
---cache auto|refresh|only
---explain-routing
+`.env.example` intentionally contains only credentials relevant to the three primitives:
+
+```dotenv
+FORAGE_CONTACT_EMAIL=
+UNPAYWALL_EMAIL=
+JINA_API_KEY=
+FIRECRAWL_API_KEY=
+BROWSERBASE_API_KEY=
+SCRAPINGANT_API_KEY=
+OPENALEX_API_KEY=
+NCBI_API_KEY=
+OPENCITATIONS_ACCESS_TOKEN=
 ```
 
-## Advanced Fetch, Extract, Render, Crawl
+No credentials are needed for Crossref, arXiv, DataCite, DOAJ, Europe PMC, Internet Archive, Common Crawl, or direct HTTP extraction.
 
-```powershell
-forage fetch https://example.com --providers direct --json
-forage extract https://example.com --json
-Get-Content urls.txt | forage extract --stdin --json
-forage render https://example.com --json
-forage map https://example.com --max-pages 25 --json
-forage crawl https://example.com --max-pages 10 --json
-```
+## Provider Scope
 
-Hosted extraction providers are preferred when configured. Direct fetch is the local fallback.
+Supported product capabilities:
 
-## Scholar, Citations, Archives, Corpora
+- Extraction: Jina Reader, Browserbase Fetch, Firecrawl, ScrapingAnt, Direct HTTP
+- Scholar: OpenAlex, Crossref, arXiv, PubMed/NCBI, DataCite, DOAJ, Europe PMC
+- Metadata-only scholar/enrichment paths: Semantic Scholar, Unpaywall, OpenCitations
+- Archive: Internet Archive, Common Crawl
 
-```powershell
-forage enrich doi 10.1038/nature12373 --json
-forage enrich paper 10.1038/nature12373 --json
-forage citations 10.1038/nature12373 --json
-forage archive lookup https://example.com --json
-forage corpus commoncrawl --json
-forage corpus gdelt "climate" --json
-```
+Removed from primary support:
 
-## Evidence Packs
+- Generic web search, news search, social/platform search, generic crawling, generic rendering, and report-writing commands.
+- Brave, Tavily, Exa, SerpApi, serpstack, Guardian, Currents, NewsAPI, GNews, Mediastack, World News API, GDELT, Hacker News, Reddit, Forem, Blogger, WordPress, Google CSE, Apify, Browserless, ORCID, Wikidata, Diffbot, ScraperAPI, and Europeana.
 
-```powershell
-forage research-pack "machine learning" --json
-forage evidence inspect .forage/evidence/<id>.json --json
-```
+## Exit Behavior
 
-You can also create a pack from JSON or JSONL stdin:
-
-```powershell
-forage search scholar "machine learning" --json | forage evidence create --query "machine learning" --json
-```
-
-## Cache
-
-```powershell
-forage cache status
-forage cache clear
-```
-
-Cache state lives under `.forage/state.db`.
+If no eligible provider can satisfy a primitive, Forage returns a structured error with an exit code and setup hint. Intermediate provider failures stay hidden unless `--verbose`, `--explain-routing`, doctor, quota, or JSON diagnostics are requested.
