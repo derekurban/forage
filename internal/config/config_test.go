@@ -97,6 +97,24 @@ func TestLoadMergesNewDefaultProviders(t *testing.T) {
 	}
 }
 
+func TestLoadUpgradesOldDOIEnrichmentRoute(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(".forage", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(".forage", "config.yaml"), []byte("version: 1\nrouting:\n  enrich.doi:\n    - crossref\n    - unpaywall\n    - openalex\ncache:\n  database: .forage/state.db\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(cfg.Routing["enrich.doi"], ",")
+	if got != "openalex,unpaywall,crossref" {
+		t.Fatalf("enrich.doi route = %s", got)
+	}
+}
+
 func TestRepairWritesNormalizedConfig(t *testing.T) {
 	t.Chdir(t.TempDir())
 	if err := os.MkdirAll(".forage", 0o755); err != nil {

@@ -9,19 +9,14 @@ These providers are part of default routing and have adapter coverage in the cur
 | Capability | Providers |
 | --- | --- |
 | Extract | Jina Reader, Browserbase Fetch, Firecrawl, ScrapingAnt, Direct HTTP |
-| Scholar search | OpenAlex, Crossref, arXiv, PubMed/NCBI, DataCite, DOAJ, Europe PMC |
-| DOI/paper enrichment | Crossref, OpenAlex |
+| Scholar search | OpenAlex, Crossref, arXiv, PubMed/NCBI, DataCite, DOAJ, Europe PMC, Semantic Scholar |
+| DOI/paper enrichment | OpenAlex, Unpaywall, Crossref, Semantic Scholar |
+| Citation lookup | OpenCitations, OpenAlex, Semantic Scholar, Crossref fallback metadata |
 | Archive lookup | Internet Archive, Common Crawl |
 
-## Metadata-Only
+## Raw Payload Policy
 
-These providers remain registered because they map directly to scholarly enrichment or citation workflows, but they are not used by default routing unless explicitly promoted later:
-
-| Provider | Reason |
-| --- | --- |
-| Semantic Scholar | Useful scholarly graph, but unauthenticated shared limits are not reliable enough for default routing |
-| OpenCitations | Citation API is relevant, but release promotion still needs mocked coverage and live smoke validation |
-| Unpaywall | Open-access DOI enrichment is relevant, but the adapter remains metadata-only until validation is complete |
+Scholarly commands return compact normalized records by default. Use `--raw` on `scholar`, `scholar doi`, `scholar paper`, or `scholar citations` when an agent needs provider-specific fields outside the normalized contract.
 
 ## Removed
 

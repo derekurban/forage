@@ -219,6 +219,41 @@ func TestFetchMissingAuthReturnsAuthMissing(t *testing.T) {
 	}
 }
 
+func TestUnpaywallMissingEmailReturnsAuthMissing(t *testing.T) {
+	st, err := state.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	cfg := config.Default()
+	cfg.Routing[capability.EnrichDOI] = []string{"unpaywall"}
+	r := New(cfg, st, missingCreds{})
+	r.Adapters = map[string]Adapter{}
+	_, ae := r.EnrichDOI(context.Background(), capability.DataRequest{ID: "10.1/x", CacheMode: "refresh", ExplainRouting: true})
+	if ae == nil || ae.Code != "auth_missing" {
+		t.Fatalf("expected auth_missing, got %+v", ae)
+	}
+}
+
+func TestPromotedScholarlyProviderIsEligibleByDefault(t *testing.T) {
+	st, err := state.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	cfg := config.Default()
+	cfg.Routing[capability.CitationsDOI] = []string{"opencitations"}
+	r := New(cfg, st, fakeCreds{})
+	r.Adapters = map[string]Adapter{"opencitations": fakeData{id: "opencitations"}}
+	resp, ae := r.Citations(context.Background(), capability.DataRequest{ID: "10.1/x", CacheMode: "refresh", ExplainRouting: true})
+	if ae != nil {
+		t.Fatal(ae)
+	}
+	if len(resp.Routing.ProvidersUsed) != 1 || resp.Routing.ProvidersUsed[0] != "opencitations" {
+		t.Fatalf("routing = %+v", resp.Routing)
+	}
+}
+
 func TestSearchReadsNegativeCache(t *testing.T) {
 	st, err := state.Open(filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {

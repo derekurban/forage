@@ -40,6 +40,7 @@ forage scholar "memory consolidation transformer models" --json
 forage scholar doi "10.1038/nature12373" --json
 forage scholar paper "10.1038/nature12373" --json
 forage scholar citations "10.1038/nature12373" --json
+forage scholar doi "10.1038/nature12373" --raw --json
 ```
 
 Check archive availability for a URL:
@@ -71,7 +72,7 @@ The reduced credential surface is:
 - Scholarly/citations: `OPENALEX_API_KEY`, `NCBI_API_KEY`, `OPENCITATIONS_ACCESS_TOKEN`, `UNPAYWALL_EMAIL`
 - Contact identity: `FORAGE_CONTACT_EMAIL`
 
-Most scholarly/archive providers need no key: Crossref, arXiv, DataCite, DOAJ, Europe PMC, Internet Archive, and Common Crawl.
+Most scholarly/archive providers need no key: Crossref, arXiv, DataCite, DOAJ, Europe PMC, Semantic Scholar, Internet Archive, and Common Crawl. Unpaywall requires `UNPAYWALL_EMAIL` as a contact email, not a secret.
 
 ## Operational Commands
 
@@ -96,8 +97,8 @@ Forage intentionally supports only providers that serve `extract`, `scholar`, or
 Kept:
 
 - Extraction: Jina Reader, Browserbase Fetch, Firecrawl, ScrapingAnt, Direct HTTP
-- Scholar: OpenAlex, Crossref, arXiv, PubMed/NCBI, DataCite, DOAJ, Europe PMC, Semantic Scholar metadata-only
-- Enrichment/citations: Unpaywall metadata-only, OpenCitations metadata-only
+- Scholar: OpenAlex, Crossref, arXiv, PubMed/NCBI, DataCite, DOAJ, Europe PMC, Semantic Scholar
+- Enrichment/citations: Unpaywall, OpenCitations
 - Archive: Internet Archive, Common Crawl
 
 Removed from the product surface:

@@ -62,8 +62,20 @@ func TestSemanticScholarUsesNoKeyPublicEndpoints(t *testing.T) {
 	if len(p.CredentialFields) != 0 {
 		t.Fatalf("semantic_scholar should not require credentials: %+v", p.CredentialFields)
 	}
-	if p.Status != MetadataOnly {
-		t.Fatalf("semantic_scholar remains metadata-only until public rate limits are reliable, got %s", p.Status)
+	if p.Status != CapabilitySupported {
+		t.Fatalf("semantic_scholar status = %s", p.Status)
+	}
+}
+
+func TestPromotedScholarlyProvidersAreCapabilitySupported(t *testing.T) {
+	for _, id := range []string{"semantic_scholar", "opencitations", "unpaywall"} {
+		p, ok := ByID(id)
+		if !ok {
+			t.Fatalf("missing %s", id)
+		}
+		if p.Status != CapabilitySupported {
+			t.Fatalf("%s status = %s", id, p.Status)
+		}
 	}
 }
 

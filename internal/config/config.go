@@ -90,7 +90,7 @@ func Default() Config {
 			"extract.article": {"jina", "browserbase", "firecrawl", "scrapingant", "direct"},
 			"fetch.url":       {"jina", "browserbase", "firecrawl", "scrapingant", "direct"},
 			"archive.lookup":  {"internet_archive", "commoncrawl"},
-			"enrich.doi":      {"crossref", "unpaywall", "openalex"},
+			"enrich.doi":      {"openalex", "unpaywall", "crossref"},
 			"enrich.paper":    {"openalex", "semantic_scholar"},
 			"citations.doi":   {"opencitations", "crossref", "openalex", "semantic_scholar"},
 		},
@@ -200,6 +200,9 @@ func Load() (Config, error) {
 		}
 		cfg.Routing[cap] = kept
 	}
+	if routeEqual(cfg.Routing["enrich.doi"], []string{"crossref", "unpaywall", "openalex"}) {
+		cfg.Routing["enrich.doi"] = Default().Routing["enrich.doi"]
+	}
 	return cfg, nil
 }
 
@@ -240,4 +243,16 @@ func contains(items []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func routeEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

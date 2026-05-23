@@ -45,6 +45,7 @@ forage scholar "memory consolidation transformer models" --limit 10 --json
 forage scholar doi "10.1038/nature12373" --json
 forage scholar paper "10.1038/nature12373" --json
 forage scholar citations "10.1038/nature12373" --json
+forage scholar doi "10.1038/nature12373" --raw --json
 ```
 
 Flags:
@@ -53,9 +54,10 @@ Flags:
 --limit              maximum scholarly records for query search
 --cache              auto, refresh, or only
 --explain-routing    include provider routing diagnostics
+--raw                include raw provider payloads in JSON output
 ```
 
-Use this when native search is not enough for DOI metadata, paper identifiers, citation expansion, PubMed/arXiv-style records, open-access lookup, or dataset metadata.
+Use this when native search is not enough for DOI metadata, paper identifiers, citation expansion, PubMed/arXiv-style records, open-access lookup, or dataset metadata. Default output is compact and normalized for agents; `--raw` keeps provider-specific payloads available when you need fields outside the normalized contract.
 
 ## `archive`
 
@@ -130,15 +132,15 @@ NCBI_API_KEY=
 OPENCITATIONS_ACCESS_TOKEN=
 ```
 
-No credentials are needed for Crossref, arXiv, DataCite, DOAJ, Europe PMC, Internet Archive, Common Crawl, or direct HTTP extraction.
+No credentials are needed for Crossref, arXiv, DataCite, DOAJ, Europe PMC, Semantic Scholar, Internet Archive, Common Crawl, or direct HTTP extraction. `UNPAYWALL_EMAIL` is a required contact email for Unpaywall requests, not a secret.
 
 ## Provider Scope
 
 Supported product capabilities:
 
 - Extraction: Jina Reader, Browserbase Fetch, Firecrawl, ScrapingAnt, Direct HTTP
-- Scholar: OpenAlex, Crossref, arXiv, PubMed/NCBI, DataCite, DOAJ, Europe PMC
-- Metadata-only scholar/enrichment paths: Semantic Scholar, Unpaywall, OpenCitations
+- Scholar: OpenAlex, Crossref, arXiv, PubMed/NCBI, DataCite, DOAJ, Europe PMC, Semantic Scholar
+- DOI/open-access/citation enrichment: Crossref, OpenAlex, Unpaywall, OpenCitations, Semantic Scholar
 - Archive: Internet Archive, Common Crawl
 
 Removed from primary support:

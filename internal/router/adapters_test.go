@@ -193,13 +193,42 @@ func TestHTTPAdapterArchiveEnrichAndCorpusProviders(t *testing.T) {
 			_, err := a.Enrich(context.Background(), capability.DataRequest{Capability: capability.EnrichDOI, ID: "10.1/x"})
 			return err
 		}},
+		{name: "unpaywall_enrich", id: "unpaywall", body: `{"doi":"10.1/x","is_oa":true,"oa_status":"gold","best_oa_location":{"url":"https://example.com/p","url_for_pdf":"https://example.com/p.pdf","license":"cc-by","host_type":"publisher"},"journal_name":"Journal","publisher":"Publisher"}`, run: func(a HTTPAdapter) error {
+			got, err := a.Enrich(context.Background(), capability.DataRequest{Capability: capability.EnrichDOI, ID: "10.1/x"})
+			if err != nil {
+				return err
+			}
+			e, ok := got.(capability.ScholarlyEnrichment)
+			if !ok || e.OpenAccess == nil || !e.OpenAccess.IsOA || e.OpenAccess.Raw != nil {
+				t.Fatalf("unpaywall enrichment = %#v", got)
+			}
+			return nil
+		}},
+		{name: "semantic_scholar_enrich_doi", id: "semantic_scholar", body: `{"paperId":"S1","title":"Paper","abstract":"Abstract","url":"https://example.com/p","year":2024,"venue":"Venue","citationCount":7,"referenceCount":3,"externalIds":{"DOI":"10.1/x"},"authors":[{"name":"Ada Lovelace"}]}`, run: func(a HTTPAdapter) error {
+			got, err := a.Enrich(context.Background(), capability.DataRequest{Capability: capability.EnrichPaper, ID: "10.1/x"})
+			if err != nil {
+				return err
+			}
+			e, ok := got.(capability.ScholarlyEnrichment)
+			if !ok || e.Record == nil || e.Record.DOI != "10.1/x" || e.Record.CitationCount != 7 || len(e.Record.Authors) != 1 {
+				t.Fatalf("semantic enrichment = %#v", got)
+			}
+			return nil
+		}},
 		{name: "commoncrawl_corpus", id: "commoncrawl", body: `[{"id":"CC-MAIN-2024-10","cdx-api":"https://index.example/","name":"Index"}]`, run: func(a HTTPAdapter) error {
 			_, err := a.Corpus(context.Background(), capability.DataRequest{Capability: capability.CorpusQuery, Query: "x"})
 			return err
 		}},
-		{name: "opencitations", id: "opencitations", body: `[{"citing":"x"}]`, run: func(a HTTPAdapter) error {
-			_, err := a.Citations(context.Background(), capability.DataRequest{Capability: capability.CitationsDOI, ID: "10.1/x"})
-			return err
+		{name: "opencitations", id: "opencitations", body: `[{"citing":"10.2/y","cited":"10.1/x","creation":"2024-01-02"}]`, run: func(a HTTPAdapter) error {
+			got, err := a.Citations(context.Background(), capability.DataRequest{Capability: capability.CitationsDOI, ID: "10.1/x"})
+			if err != nil {
+				return err
+			}
+			c, ok := got.(capability.CitationResponse)
+			if !ok || len(c.Records) != 1 || c.Records[0].CitingDOI != "10.2/y" || c.Records[0].Year != 2024 {
+				t.Fatalf("citations = %#v", got)
+			}
+			return nil
 		}},
 	}
 	for _, tt := range tests {
@@ -214,6 +243,49 @@ func TestHTTPAdapterArchiveEnrichAndCorpusProviders(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestSemanticScholarDOILookupUsesDOIPrefix(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.EscapedPath(), "DOI:10.1%2Fx") && !strings.Contains(r.URL.Path, "DOI:10.1/x") {
+			t.Fatalf("path = %s escaped=%s", r.URL.Path, r.URL.EscapedPath())
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"paperId":"S1","title":"Paper","externalIds":{"DOI":"10.1/x"}}`))
+	}))
+	defer ts.Close()
+	a := HTTPAdapter{id: "semantic_scholar", client: testClient(ts), creds: fakeCreds{}}
+	got, err := a.Enrich(context.Background(), capability.DataRequest{Capability: capability.EnrichPaper, ID: "10.1/x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := got.(capability.ScholarlyEnrichment)
+	if e.Record == nil || e.Record.DOI != "10.1/x" {
+		t.Fatalf("enrichment = %#v", got)
+	}
+}
+
+func TestRawPayloadsRequireIncludeRaw(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"doi":"10.1/x","is_oa":true,"best_oa_location":{"url":"https://example.com"}}`))
+	}))
+	defer ts.Close()
+	a := HTTPAdapter{id: "unpaywall", client: testClient(ts), creds: fakeCreds{}}
+	withoutRaw, err := a.Enrich(context.Background(), capability.DataRequest{Capability: capability.EnrichDOI, ID: "10.1/x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withoutRaw.(capability.ScholarlyEnrichment).Raw != nil || withoutRaw.(capability.ScholarlyEnrichment).OpenAccess.Raw != nil {
+		t.Fatalf("raw leaked without flag: %#v", withoutRaw)
+	}
+	withRaw, err := a.Enrich(context.Background(), capability.DataRequest{Capability: capability.EnrichDOI, ID: "10.1/x", IncludeRaw: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withRaw.(capability.ScholarlyEnrichment).Raw == nil || withRaw.(capability.ScholarlyEnrichment).OpenAccess.Raw == nil {
+		t.Fatalf("raw missing with flag: %#v", withRaw)
 	}
 }
 

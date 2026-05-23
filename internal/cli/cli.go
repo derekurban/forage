@@ -342,6 +342,13 @@ func (a *app) providersQuotaCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
+				filtered := states[:0]
+				for _, ps := range states {
+					if _, ok := providers.ByID(ps.Provider); ok {
+						filtered = append(filtered, ps)
+					}
+				}
+				states = filtered
 			}
 			if a.opts.JSON || a.opts.JSONL {
 				return output.Write(cmd.OutOrStdout(), a.opts, cmd.CommandPath(), states, nil)
@@ -626,18 +633,20 @@ func (a *app) scholarCmd() *cobra.Command {
 	var limit int
 	var cacheMode string
 	var explain bool
+	var raw bool
 	cmd := &cobra.Command{
 		Use:   "scholar QUERY",
 		Short: "Search and enrich scholarly literature",
 		Long:  "Search and enrich scholarly literature through scholarly APIs. This complements native web search with paper metadata, DOI lookup, open-access checks, and citation expansion.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.runSearch(cmd, capability.SearchScholar, args[0], nil, nil, limit, "", "", cacheMode, explain || a.opts.Verbose)
+			return a.runSearch(cmd, capability.SearchScholar, args[0], nil, nil, limit, "", "", cacheMode, explain || a.opts.Verbose, raw)
 		},
 	}
 	cmd.Flags().IntVar(&limit, "limit", 10, "maximum scholarly records")
 	cmd.PersistentFlags().StringVar(&cacheMode, "cache", "", "cache mode: auto, refresh, only")
 	cmd.PersistentFlags().BoolVar(&explain, "explain-routing", false, "include routing diagnostics")
+	cmd.PersistentFlags().BoolVar(&raw, "raw", false, "include raw provider payloads in JSON output")
 	cmd.AddCommand(&cobra.Command{
 		Use:   "doi DOI",
 		Short: "Enrich a DOI with scholarly metadata and open-access data",
@@ -648,7 +657,7 @@ func (a *app) scholarCmd() *cobra.Command {
 				return err
 			}
 			defer cleanup()
-			resp, ae := r.EnrichDOI(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: cacheMode, ExplainRouting: explain || a.opts.Verbose})
+			resp, ae := r.EnrichDOI(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: cacheMode, ExplainRouting: explain || a.opts.Verbose, IncludeRaw: raw})
 			if ae != nil {
 				return ae
 			}
@@ -665,7 +674,7 @@ func (a *app) scholarCmd() *cobra.Command {
 				return err
 			}
 			defer cleanup()
-			resp, ae := r.EnrichPaper(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: cacheMode, ExplainRouting: explain || a.opts.Verbose})
+			resp, ae := r.EnrichPaper(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: cacheMode, ExplainRouting: explain || a.opts.Verbose, IncludeRaw: raw})
 			if ae != nil {
 				return ae
 			}
@@ -682,7 +691,7 @@ func (a *app) scholarCmd() *cobra.Command {
 				return err
 			}
 			defer cleanup()
-			resp, ae := r.Citations(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: cacheMode, ExplainRouting: explain || a.opts.Verbose})
+			resp, ae := r.Citations(cmd.Context(), capability.DataRequest{ID: args[0], Query: args[0], CacheMode: cacheMode, ExplainRouting: explain || a.opts.Verbose, IncludeRaw: raw})
 			if ae != nil {
 				return ae
 			}
@@ -720,14 +729,14 @@ func (a *app) archiveCmd() *cobra.Command {
 	return cmd
 }
 
-func (a *app) runSearch(cmd *cobra.Command, cap, query string, include, exclude []string, limit int, freshness, site, cacheMode string, explain bool) error {
+func (a *app) runSearch(cmd *cobra.Command, cap, query string, include, exclude []string, limit int, freshness, site, cacheMode string, explain bool, includeRaw bool) error {
 	cfg, st, cleanup, err := a.loadConfiguredState()
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 	r := router.New(cfg, st, credentials.NewKeychainStore())
-	resp, ae := r.Search(cmd.Context(), capability.SearchRequest{Query: query, Capability: cap, Limit: limit, Freshness: freshness, Site: site, Providers: include, ExcludeProviders: exclude, CacheMode: cacheMode, ExplainRouting: explain || a.opts.Verbose})
+	resp, ae := r.Search(cmd.Context(), capability.SearchRequest{Query: query, Capability: cap, Limit: limit, Freshness: freshness, Site: site, Providers: include, ExcludeProviders: exclude, CacheMode: cacheMode, ExplainRouting: explain || a.opts.Verbose, IncludeRaw: includeRaw})
 	if ae != nil {
 		return ae
 	}

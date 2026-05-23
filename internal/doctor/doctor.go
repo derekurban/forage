@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -163,6 +164,15 @@ func (r Runner) probe(ctx context.Context, p providers.Provider, key string) (st
 			q.Set("api_key", key)
 			req.URL.RawQuery = q.Encode()
 		}
+	case "semantic_scholar":
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://api.semanticscholar.org/graph/v1/paper/search?query=forage&limit=1&fields=title", nil)
+	case "opencitations":
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://opencitations.net/index/api/v1/citations/10.1038/nature12373", nil)
+		if key != "" {
+			req.Header.Set("authorization", key)
+		}
+	case "unpaywall":
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://api.unpaywall.org/v2/10.1038/nature12373?email="+url.QueryEscape(key), nil)
 	case "pubmed":
 		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&retmode=json&term=forage&retmax=1", nil)
 		if key != "" {

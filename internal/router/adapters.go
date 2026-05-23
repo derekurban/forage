@@ -56,7 +56,7 @@ func (a HTTPAdapter) Search(ctx context.Context, req capability.SearchRequest) (
 		}
 		var out []capability.SearchResult
 		for i, w := range works {
-			out = append(out, capability.SearchResult{URL: w.URL, Title: w.Title, Snippet: w.Abstract, Provider: w.Provider, ProviderRank: i + 1, ResultType: "paper"})
+			out = append(out, capability.SearchResult{URL: w.URL, Title: w.Title, Snippet: w.Abstract, Provider: w.Provider, ProviderRank: i + 1, ResultType: "paper", Raw: w.Raw})
 		}
 		return out, nil
 	default:
@@ -176,9 +176,9 @@ func (a HTTPAdapter) LookupArchive(ctx context.Context, target string, limit int
 func (a HTTPAdapter) Enrich(ctx context.Context, req capability.DataRequest) (any, error) {
 	switch req.Capability {
 	case capability.EnrichDOI:
-		return a.enrichDOI(ctx, req.ID)
+		return a.enrichDOI(ctx, req)
 	case capability.EnrichPaper:
-		return a.enrichPaper(ctx, req.ID)
+		return a.enrichPaper(ctx, req)
 	case capability.EnrichAuthor:
 		return a.enrichAuthor(ctx, req.ID)
 	default:
@@ -198,17 +198,100 @@ func (a HTTPAdapter) Citations(ctx context.Context, req capability.DataRequest) 
 		if strings.TrimSpace(token.Value) != "" {
 			headers["authorization"] = token.Value
 		}
-		var raw any
+		var raw []map[string]any
 		if err := a.getJSON(ctx, "https://opencitations.net/index/api/v1/citations/"+url.PathEscape(doi), headers, &raw); err != nil {
 			return nil, err
 		}
-		return map[string]any{"provider": a.id, "doi": doi, "citations": raw}, nil
+		records := make([]capability.CitationRecord, 0, len(raw))
+		for _, item := range raw {
+			rec := capability.CitationRecord{
+				CitingDOI: stringField(item, "citing"),
+				CitedDOI:  stringField(item, "cited"),
+				Date:      stringField(item, "creation"),
+				Provider:  a.id,
+			}
+			rec.Year = yearFromDate(rec.Date)
+			if req.IncludeRaw {
+				rec.Raw = item
+			}
+			records = append(records, rec)
+		}
+		resp := capability.CitationResponse{DOI: doi, Records: records, Provider: a.id, Summary: map[string]any{"count": len(records)}}
+		if req.IncludeRaw {
+			resp.Raw = raw
+		}
+		return resp, nil
 	case "crossref":
-		raw, err := a.enrichDOI(ctx, doi)
+		raw, err := a.enrichDOI(ctx, capability.DataRequest{ID: doi, IncludeRaw: req.IncludeRaw})
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"provider": a.id, "doi": doi, "work": raw}, nil
+		return capability.CitationResponse{DOI: doi, Provider: a.id, Summary: map[string]any{"count": 0, "note": "Crossref does not expose citing works through this route; returned no citation records"}, Raw: includeRaw(req.IncludeRaw, raw)}, nil
+	case "openalex":
+		key, _ := a.creds.Get("openalex", "OPENALEX_API_KEY")
+		lookup := "https://api.openalex.org/works/doi:" + url.PathEscape(cleanDOI(doi))
+		if key.Value != "" {
+			lookup += "?api_key=" + url.QueryEscape(key.Value)
+		}
+		var work map[string]any
+		if err := a.getJSON(ctx, lookup, nil, &work); err != nil {
+			return nil, err
+		}
+		workID := strings.TrimPrefix(stringField(work, "id"), "https://openalex.org/")
+		if workID == "" {
+			return nil, ProviderError{Code: "not_found", Message: "OpenAlex work ID not found for DOI"}
+		}
+		u := "https://api.openalex.org/works?filter=cites:" + url.QueryEscape(workID) + "&per-page=" + fmt.Sprint(limit(req.Limit))
+		if key.Value != "" {
+			u += "&api_key=" + url.QueryEscape(key.Value)
+		}
+		var raw struct {
+			Results []map[string]any `json:"results"`
+			Meta    map[string]any   `json:"meta"`
+		}
+		if err := a.getJSON(ctx, u, nil, &raw); err != nil {
+			return nil, err
+		}
+		records := make([]capability.CitationRecord, 0, len(raw.Results))
+		for _, item := range raw.Results {
+			rec := capability.CitationRecord{CitingDOI: stringField(item, "doi"), CitedDOI: doi, Title: stringField(item, "title", "display_name"), URL: nestedString(item, "primary_location", "landing_page_url"), Year: intField(item, "publication_year"), Provider: a.id}
+			if req.IncludeRaw {
+				rec.Raw = item
+			}
+			records = append(records, rec)
+		}
+		resp := capability.CitationResponse{DOI: doi, Records: records, Provider: a.id, Summary: map[string]any{"count": len(records), "openalex_work": workID}}
+		if req.IncludeRaw {
+			resp.Raw = raw
+		}
+		return resp, nil
+	case "semantic_scholar":
+		paperID := doi
+		if looksLikeDOI(doi) {
+			paperID = "DOI:" + cleanDOI(doi)
+		}
+		var raw struct {
+			Data []struct {
+				CitingPaper semanticScholarPaper `json:"citingPaper"`
+			} `json:"data"`
+		}
+		u := "https://api.semanticscholar.org/graph/v1/paper/" + url.PathEscape(paperID) + "/citations?limit=" + fmt.Sprint(limit(req.Limit)) + "&fields=title,url,year,externalIds"
+		if err := a.getJSON(ctx, u, nil, &raw); err != nil {
+			return nil, err
+		}
+		records := make([]capability.CitationRecord, 0, len(raw.Data))
+		for _, item := range raw.Data {
+			rec := capability.CitationRecord{CitingDOI: item.CitingPaper.ExternalIDs.DOI, CitedDOI: doi, Title: item.CitingPaper.Title, URL: item.CitingPaper.URL, Year: item.CitingPaper.Year, Provider: a.id}
+			if req.IncludeRaw {
+				rec.Raw = item
+			}
+			records = append(records, rec)
+		}
+		resp := capability.CitationResponse{DOI: doi, Records: records, Provider: a.id, Summary: map[string]any{"count": len(records)}}
+		if req.IncludeRaw {
+			resp.Raw = raw
+		}
+		return resp, nil
 	default:
 		return nil, ProviderError{Code: "unsupported_capability", Message: "citations unsupported"}
 	}
@@ -281,30 +364,32 @@ func (a HTTPAdapter) Crawl(ctx context.Context, target string, maxPages int) ([]
 	}
 }
 
-func (a HTTPAdapter) enrichDOI(ctx context.Context, doi string) (any, error) {
+func (a HTTPAdapter) enrichDOI(ctx context.Context, req capability.DataRequest) (any, error) {
+	doi := req.ID
 	switch a.id {
 	case "crossref":
-		var raw any
+		var raw map[string]any
 		if err := a.getJSON(ctx, "https://api.crossref.org/works/"+url.PathEscape(doi), map[string]string{"User-Agent": "forage/0.1"}, &raw); err != nil {
 			return nil, err
 		}
-		return map[string]any{"provider": a.id, "doi": doi, "work": raw}, nil
+		return capability.ScholarlyEnrichment{ID: doi, DOI: doi, Provider: a.id, Record: normalizeCrossrefWork(raw, a.id, req.IncludeRaw), Raw: includeRaw(req.IncludeRaw, raw)}, nil
 	case "openalex":
-		return a.enrichPaper(ctx, "doi:"+doi)
+		return a.enrichPaper(ctx, capability.DataRequest{ID: "doi:" + doi, Query: doi, IncludeRaw: req.IncludeRaw})
 	case "unpaywall":
 		email, _ := a.creds.GetField("unpaywall", "email", "UNPAYWALL_EMAIL")
-		var raw any
+		var raw map[string]any
 		u := "https://api.unpaywall.org/v2/" + url.PathEscape(doi) + "?email=" + url.QueryEscape(email.Value)
 		if err := a.getJSON(ctx, u, nil, &raw); err != nil {
 			return nil, err
 		}
-		return map[string]any{"provider": a.id, "doi": doi, "open_access": raw}, nil
+		return capability.ScholarlyEnrichment{ID: doi, DOI: doi, Provider: a.id, OpenAccess: normalizeUnpaywall(raw, a.id, req.IncludeRaw), Raw: includeRaw(req.IncludeRaw, raw)}, nil
 	default:
 		return nil, ProviderError{Code: "unsupported_capability", Message: "DOI enrichment unsupported"}
 	}
 }
 
-func (a HTTPAdapter) enrichPaper(ctx context.Context, id string) (any, error) {
+func (a HTTPAdapter) enrichPaper(ctx context.Context, req capability.DataRequest) (any, error) {
+	id := req.ID
 	switch a.id {
 	case "openalex":
 		key, _ := a.creds.Get("openalex", "OPENALEX_API_KEY")
@@ -319,18 +404,22 @@ func (a HTTPAdapter) enrichPaper(ctx context.Context, id string) (any, error) {
 			}
 			endpoint += sep + "api_key=" + url.QueryEscape(key.Value)
 		}
-		var raw any
+		var raw map[string]any
 		if err := a.getJSON(ctx, endpoint, nil, &raw); err != nil {
 			return nil, err
 		}
-		return map[string]any{"provider": a.id, "id": id, "work": raw}, nil
+		return capability.ScholarlyEnrichment{ID: id, DOI: stringField(raw, "doi"), Provider: a.id, Record: normalizeOpenAlexWork(raw, a.id, req.IncludeRaw), OpenAccess: normalizeOpenAlexOA(raw, a.id, req.IncludeRaw), Raw: includeRaw(req.IncludeRaw, raw)}, nil
 	case "semantic_scholar":
-		var raw any
-		u := "https://api.semanticscholar.org/graph/v1/paper/" + url.PathEscape(id) + "?fields=title,abstract,url,year,externalIds,citationCount,referenceCount"
+		paperID := id
+		if looksLikeDOI(id) {
+			paperID = "DOI:" + cleanDOI(id)
+		}
+		var raw semanticScholarPaper
+		u := "https://api.semanticscholar.org/graph/v1/paper/" + url.PathEscape(paperID) + "?fields=paperId,title,abstract,url,year,externalIds,citationCount,referenceCount,authors,venue"
 		if err := a.getJSON(ctx, u, nil, &raw); err != nil {
 			return nil, err
 		}
-		return map[string]any{"provider": a.id, "id": id, "paper": raw}, nil
+		return capability.ScholarlyEnrichment{ID: id, DOI: raw.ExternalIDs.DOI, Provider: a.id, Record: normalizeSemanticScholarPaper(raw, a.id, req.IncludeRaw), Raw: includeRaw(req.IncludeRaw, raw)}, nil
 	default:
 		return nil, ProviderError{Code: "unsupported_capability", Message: "paper enrichment unsupported"}
 	}
@@ -753,24 +842,19 @@ func (a HTTPAdapter) searchScholar(ctx context.Context, req capability.SearchReq
 		return out, nil
 	case "semantic_scholar":
 		var raw struct {
-			Data []struct {
-				PaperID     string `json:"paperId"`
-				Title       string
-				Abstract    string
-				URL         string
-				Year        int
-				ExternalIDs struct {
-					DOI string
-				} `json:"externalIds"`
-			} `json:"data"`
+			Data []semanticScholarPaper `json:"data"`
 		}
-		u := "https://api.semanticscholar.org/graph/v1/paper/search?query=" + q + "&limit=" + fmt.Sprint(limit(req.Limit)) + "&fields=title,abstract,url,year,externalIds"
+		u := "https://api.semanticscholar.org/graph/v1/paper/search?query=" + q + "&limit=" + fmt.Sprint(limit(req.Limit)) + "&fields=paperId,title,abstract,url,year,externalIds,citationCount,referenceCount,authors,venue"
 		if err := a.getJSON(ctx, u, nil, &raw); err != nil {
 			return nil, err
 		}
 		var out []capability.ScholarWork
 		for _, r := range raw.Data {
-			out = append(out, capability.ScholarWork{ID: r.PaperID, DOI: r.ExternalIDs.DOI, Title: r.Title, Abstract: r.Abstract, URL: r.URL, Year: r.Year, Provider: a.id})
+			w := capability.ScholarWork{ID: r.PaperID, DOI: r.ExternalIDs.DOI, Title: r.Title, Abstract: r.Abstract, URL: r.URL, Year: r.Year, Authors: semanticAuthors(r.Authors), Venue: r.Venue, CitationCount: r.CitationCount, ReferenceCount: r.ReferenceCount, Provider: a.id}
+			if req.IncludeRaw {
+				w.Raw = r
+			}
+			out = append(out, w)
 		}
 		return out, nil
 	case "datacite":
@@ -845,6 +929,267 @@ func (a HTTPAdapter) searchScholar(ctx context.Context, req capability.SearchReq
 	default:
 		return nil, ProviderError{Code: "unsupported_capability", Message: "scholar search unsupported"}
 	}
+}
+
+type semanticScholarPaper struct {
+	PaperID        string `json:"paperId"`
+	Title          string
+	Abstract       string
+	URL            string
+	Year           int
+	Venue          string
+	CitationCount  int `json:"citationCount"`
+	ReferenceCount int `json:"referenceCount"`
+	ExternalIDs    struct {
+		DOI string
+	} `json:"externalIds"`
+	Authors []struct {
+		Name string
+	} `json:"authors"`
+}
+
+func normalizeSemanticScholarPaper(raw semanticScholarPaper, provider string, includeRaw bool) *capability.ScholarlyRecord {
+	rec := &capability.ScholarlyRecord{
+		ID:             raw.PaperID,
+		DOI:            raw.ExternalIDs.DOI,
+		Title:          raw.Title,
+		Abstract:       raw.Abstract,
+		Year:           raw.Year,
+		URL:            raw.URL,
+		Authors:        semanticAuthors(raw.Authors),
+		Venue:          raw.Venue,
+		CitationCount:  raw.CitationCount,
+		ReferenceCount: raw.ReferenceCount,
+		Provider:       provider,
+	}
+	if includeRaw {
+		rec.Raw = raw
+	}
+	return rec
+}
+
+func semanticAuthors(in []struct{ Name string }) []string {
+	var out []string
+	for _, a := range in {
+		if strings.TrimSpace(a.Name) != "" {
+			out = append(out, a.Name)
+		}
+	}
+	return out
+}
+
+func normalizeOpenAlexWork(raw map[string]any, provider string, includeRaw bool) *capability.ScholarlyRecord {
+	rec := &capability.ScholarlyRecord{
+		ID:             stringField(raw, "id"),
+		DOI:            stringField(raw, "doi"),
+		Title:          stringField(raw, "title", "display_name"),
+		Year:           intField(raw, "publication_year"),
+		URL:            nestedString(raw, "primary_location", "landing_page_url"),
+		CitationCount:  intField(raw, "cited_by_count"),
+		ReferenceCount: len(anySlice(raw["referenced_works"])),
+		Provider:       provider,
+	}
+	if rec.URL == "" {
+		rec.URL = nestedString(raw, "best_oa_location", "landing_page_url")
+	}
+	if includeRaw {
+		rec.Raw = raw
+	}
+	return rec
+}
+
+func normalizeOpenAlexOA(raw map[string]any, provider string, includeRaw bool) *capability.OpenAccessSummary {
+	loc, _ := raw["best_oa_location"].(map[string]any)
+	if loc == nil {
+		loc, _ = raw["primary_location"].(map[string]any)
+	}
+	oa := &capability.OpenAccessSummary{
+		IsOA:     nestedBool(raw, "open_access", "is_oa") || boolField(raw, "is_oa"),
+		Status:   nestedString(raw, "open_access", "oa_status"),
+		URL:      stringField(loc, "landing_page_url", "url"),
+		PDFURL:   stringField(loc, "pdf_url", "url_for_pdf"),
+		License:  stringField(loc, "license"),
+		HostType: stringField(loc, "source_type"),
+		Provider: provider,
+	}
+	if !oa.IsOA && oa.Status == "" && oa.URL == "" && oa.PDFURL == "" {
+		return nil
+	}
+	if includeRaw {
+		oa.Raw = raw
+	}
+	return oa
+}
+
+func normalizeCrossrefWork(raw map[string]any, provider string, includeRaw bool) *capability.ScholarlyRecord {
+	msg, _ := raw["message"].(map[string]any)
+	rec := &capability.ScholarlyRecord{
+		DOI:           stringField(msg, "DOI", "doi"),
+		Title:         firstString(msg["title"]),
+		URL:           stringField(msg, "URL", "url"),
+		Venue:         firstString(msg["container-title"]),
+		CitationCount: intField(msg, "is-referenced-by-count"),
+		Provider:      provider,
+	}
+	rec.Year = crossrefYear(msg)
+	rec.Authors = crossrefAuthors(msg)
+	if includeRaw {
+		rec.Raw = raw
+	}
+	return rec
+}
+
+func normalizeUnpaywall(raw map[string]any, provider string, includeRaw bool) *capability.OpenAccessSummary {
+	loc, _ := raw["best_oa_location"].(map[string]any)
+	oa := &capability.OpenAccessSummary{
+		IsOA:        boolField(raw, "is_oa"),
+		Status:      stringField(raw, "oa_status"),
+		URL:         stringField(loc, "url", "url_for_landing_page"),
+		PDFURL:      stringField(loc, "url_for_pdf"),
+		License:     stringField(loc, "license"),
+		HostType:    stringField(loc, "host_type"),
+		JournalName: stringField(raw, "journal_name"),
+		Publisher:   stringField(raw, "publisher"),
+		Provider:    provider,
+	}
+	if includeRaw {
+		oa.Raw = raw
+	}
+	return oa
+}
+
+func includeRaw(include bool, raw any) any {
+	if include {
+		return raw
+	}
+	return nil
+}
+
+func looksLikeDOI(v string) bool {
+	v = strings.TrimSpace(strings.ToLower(v))
+	return strings.HasPrefix(v, "10.") || strings.HasPrefix(v, "doi:10.")
+}
+
+func cleanDOI(v string) string {
+	v = strings.TrimSpace(v)
+	v = strings.TrimPrefix(strings.TrimPrefix(v, "doi:"), "DOI:")
+	return v
+}
+
+func stringField(m map[string]any, names ...string) string {
+	if m == nil {
+		return ""
+	}
+	for _, name := range names {
+		if v, ok := m[name]; ok {
+			switch x := v.(type) {
+			case string:
+				return strings.TrimSpace(x)
+			case fmt.Stringer:
+				return strings.TrimSpace(x.String())
+			}
+		}
+	}
+	return ""
+}
+
+func nestedString(m map[string]any, parent, child string) string {
+	n, _ := m[parent].(map[string]any)
+	return stringField(n, child)
+}
+
+func intField(m map[string]any, names ...string) int {
+	for _, name := range names {
+		switch v := m[name].(type) {
+		case int:
+			return v
+		case int64:
+			return int(v)
+		case float64:
+			return int(v)
+		case json.Number:
+			n, _ := v.Int64()
+			return int(n)
+		}
+	}
+	return 0
+}
+
+func boolField(m map[string]any, name string) bool {
+	v, _ := m[name].(bool)
+	return v
+}
+
+func nestedBool(m map[string]any, parent, child string) bool {
+	n, _ := m[parent].(map[string]any)
+	return boolField(n, child)
+}
+
+func firstString(v any) string {
+	switch x := v.(type) {
+	case []any:
+		for _, item := range x {
+			if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+				return s
+			}
+		}
+	case []string:
+		if len(x) > 0 {
+			return x[0]
+		}
+	case string:
+		return x
+	}
+	return ""
+}
+
+func anySlice(v any) []any {
+	x, _ := v.([]any)
+	return x
+}
+
+func crossrefYear(msg map[string]any) int {
+	for _, key := range []string{"published-print", "published-online", "published"} {
+		pub, _ := msg[key].(map[string]any)
+		parts, _ := pub["date-parts"].([]any)
+		if len(parts) == 0 {
+			continue
+		}
+		first, _ := parts[0].([]any)
+		if len(first) == 0 {
+			continue
+		}
+		if y, ok := first[0].(float64); ok {
+			return int(y)
+		}
+	}
+	return 0
+}
+
+func crossrefAuthors(msg map[string]any) []string {
+	authors, _ := msg["author"].([]any)
+	var out []string
+	for _, item := range authors {
+		a, _ := item.(map[string]any)
+		name := strings.TrimSpace(strings.TrimSpace(stringField(a, "given") + " " + stringField(a, "family")))
+		if name == "" {
+			name = stringField(a, "name")
+		}
+		if name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func yearFromDate(v string) int {
+	if len(v) >= 4 {
+		var y int
+		if _, err := fmt.Sscanf(v[:4], "%d", &y); err == nil {
+			return y
+		}
+	}
+	return 0
 }
 
 func (a HTTPAdapter) directFetch(ctx context.Context, target string) (capability.ExtractedDocument, error) {

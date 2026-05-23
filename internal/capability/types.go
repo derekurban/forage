@@ -29,6 +29,7 @@ type SearchRequest struct {
 	ExcludeProviders []string `json:"exclude_providers,omitempty"`
 	CacheMode        string   `json:"cache_mode"`
 	ExplainRouting   bool     `json:"explain_routing"`
+	IncludeRaw       bool     `json:"include_raw,omitempty"`
 }
 
 type FetchRequest struct {
@@ -58,6 +59,7 @@ type DataRequest struct {
 	ExplainRouting   bool           `json:"explain_routing"`
 	Limit            int            `json:"limit,omitempty"`
 	MaxPages         int            `json:"max_pages,omitempty"`
+	IncludeRaw       bool           `json:"include_raw,omitempty"`
 	Options          map[string]any `json:"options,omitempty"`
 }
 
@@ -116,13 +118,74 @@ type ExtractedDocument struct {
 }
 
 type ScholarWork struct {
-	ID       string `json:"id,omitempty"`
-	DOI      string `json:"doi,omitempty"`
-	Title    string `json:"title,omitempty"`
-	Abstract string `json:"abstract,omitempty"`
-	Year     int    `json:"year,omitempty"`
-	URL      string `json:"url,omitempty"`
-	Provider string `json:"provider"`
+	ID             string   `json:"id,omitempty"`
+	DOI            string   `json:"doi,omitempty"`
+	Title          string   `json:"title,omitempty"`
+	Abstract       string   `json:"abstract,omitempty"`
+	Year           int      `json:"year,omitempty"`
+	URL            string   `json:"url,omitempty"`
+	Authors        []string `json:"authors,omitempty"`
+	Venue          string   `json:"venue,omitempty"`
+	CitationCount  int      `json:"citation_count,omitempty"`
+	ReferenceCount int      `json:"reference_count,omitempty"`
+	Provider       string   `json:"provider"`
+	Raw            any      `json:"raw,omitempty"`
+}
+
+type ScholarlyRecord struct {
+	ID             string   `json:"id,omitempty"`
+	DOI            string   `json:"doi,omitempty"`
+	Title          string   `json:"title,omitempty"`
+	Abstract       string   `json:"abstract,omitempty"`
+	Year           int      `json:"year,omitempty"`
+	URL            string   `json:"url,omitempty"`
+	Authors        []string `json:"authors,omitempty"`
+	Venue          string   `json:"venue,omitempty"`
+	CitationCount  int      `json:"citation_count,omitempty"`
+	ReferenceCount int      `json:"reference_count,omitempty"`
+	Provider       string   `json:"provider"`
+	Raw            any      `json:"raw,omitempty"`
+}
+
+type OpenAccessSummary struct {
+	IsOA        bool   `json:"is_oa"`
+	Status      string `json:"status,omitempty"`
+	URL         string `json:"url,omitempty"`
+	PDFURL      string `json:"pdf_url,omitempty"`
+	License     string `json:"license,omitempty"`
+	HostType    string `json:"host_type,omitempty"`
+	JournalName string `json:"journal_name,omitempty"`
+	Publisher   string `json:"publisher,omitempty"`
+	Provider    string `json:"provider,omitempty"`
+	Raw         any    `json:"raw,omitempty"`
+}
+
+type ScholarlyEnrichment struct {
+	ID         string             `json:"id,omitempty"`
+	DOI        string             `json:"doi,omitempty"`
+	Record     *ScholarlyRecord   `json:"record,omitempty"`
+	OpenAccess *OpenAccessSummary `json:"open_access,omitempty"`
+	Provider   string             `json:"provider"`
+	Raw        any                `json:"raw,omitempty"`
+}
+
+type CitationRecord struct {
+	CitingDOI string `json:"citing_doi,omitempty"`
+	CitedDOI  string `json:"cited_doi,omitempty"`
+	Title     string `json:"title,omitempty"`
+	URL       string `json:"url,omitempty"`
+	Year      int    `json:"year,omitempty"`
+	Date      string `json:"date,omitempty"`
+	Provider  string `json:"provider"`
+	Raw       any    `json:"raw,omitempty"`
+}
+
+type CitationResponse struct {
+	DOI      string           `json:"doi"`
+	Records  []CitationRecord `json:"records"`
+	Summary  map[string]any   `json:"summary,omitempty"`
+	Provider string           `json:"provider"`
+	Raw      any              `json:"raw,omitempty"`
 }
 
 type NewsResult = SearchResult
