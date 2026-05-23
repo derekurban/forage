@@ -56,13 +56,29 @@ Existing process environment variables take precedence over `.env`. The `.env` f
 
 The template contains only credential fields Forage should validate or keep ready for the recurring-free provider set. Blogger, WordPress API endpoints, Reddit, Google Custom Search, Diffbot, and ScraperAPI are intentionally excluded. Semantic Scholar remains metadata-only until its public shared limits are reliable enough for release routing.
 
-## Common Commands
+## Agent-First Usage
+
+For agents, start with the high-level commands. They compose search, fetch/extraction, cache, quota-aware fallback, and evidence metadata behind one stable interface.
+
+```powershell
+forage gather "latest OpenAI model pricing" --json
+forage retrieve "https://example.com" --json
+forage retrieve "10.1038/nature12373" --json
+forage brief "Browserbase search API docs" --format markdown
+```
+
+Use `gather` when an agent needs evidence records, `retrieve` when it has an unknown input type, and `brief` when it needs compact source blocks for an LLM context window.
+
+Use `--explain-routing` or `--verbose` to inspect provider attempts. Normal output hides intermediate provider failures when fallback succeeds.
+
+## Advanced Primitives
+
+The lower-level commands remain available for debugging, provider checks, and explicit routing:
 
 ```powershell
 forage setup
 forage credentials list
 forage providers doctor
-forage providers quota
 forage providers quota --preflight --provider openalex
 forage search web "query" --json
 forage search scholar "machine learning" --json
@@ -70,8 +86,6 @@ forage fetch https://example.com --json
 forage extract urls.txt --jsonl
 forage research-pack "machine learning" --json
 ```
-
-Use `--explain-routing` or `--verbose` to inspect provider attempts. Normal output hides intermediate provider failures when fallback succeeds.
 
 ## Provider Policy
 

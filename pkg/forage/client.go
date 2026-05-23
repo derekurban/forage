@@ -3,6 +3,7 @@ package forage
 import (
 	"context"
 
+	"github.com/derekurban/forage/internal/agent"
 	"github.com/derekurban/forage/internal/apperr"
 	"github.com/derekurban/forage/internal/capability"
 	"github.com/derekurban/forage/internal/config"
@@ -33,6 +34,13 @@ type Error = apperr.Error
 type ProviderState = state.ProviderState
 type DoctorResult = doctor.Result
 type EvidencePack = evidence.Pack
+type AgentRecord = agent.Record
+type GatherRequest = agent.GatherRequest
+type GatherResponse = agent.GatherResponse
+type RetrieveRequest = agent.RetrieveRequest
+type RetrieveResponse = agent.RetrieveResponse
+type BriefRequest = agent.BriefRequest
+type BriefResponse = agent.BriefResponse
 
 func Open() (*Client, error) {
 	cfg, err := config.Load()
@@ -99,4 +107,20 @@ func (c *Client) QuotaPreflight(ctx context.Context, provider string) quota.Resu
 
 func (c *Client) CreateEvidencePack(query string, items []any) (string, EvidencePack, error) {
 	return evidence.Create(config.Dir(), query, c.cfg.Policy, items)
+}
+
+func (c *Client) Gather(ctx context.Context, req GatherRequest) (GatherResponse, *Error) {
+	return c.agentWorkflow().Gather(ctx, req)
+}
+
+func (c *Client) Retrieve(ctx context.Context, req RetrieveRequest) (RetrieveResponse, *Error) {
+	return c.agentWorkflow().Retrieve(ctx, req)
+}
+
+func (c *Client) Brief(ctx context.Context, req BriefRequest) (BriefResponse, *Error) {
+	return c.agentWorkflow().Brief(ctx, req)
+}
+
+func (c *Client) agentWorkflow() agent.Workflow {
+	return agent.Workflow{Router: router.New(c.cfg, c.state, credentials.NewKeychainStore()), Config: c.cfg, EvidenceDir: config.Dir()}
 }

@@ -13,4 +13,7 @@ func TestPublicAliasesCompile(t *testing.T) {
 	}
 	var _ DataRequest = DataRequest{Capability: capability.ArchiveLookup}
 	var _ EvidencePack
+	var _ GatherRequest = GatherRequest{Query: "x"}
+	var _ RetrieveRequest = RetrieveRequest{Input: "https://example.com"}
+	var _ BriefRequest = BriefRequest{Query: "x"}
 }

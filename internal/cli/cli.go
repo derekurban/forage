@@ -14,6 +14,7 @@ import (
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/spf13/cobra"
 
+	"github.com/derekurban/forage/internal/agent"
 	"github.com/derekurban/forage/internal/apperr"
 	"github.com/derekurban/forage/internal/capability"
 	"github.com/derekurban/forage/internal/config"
@@ -71,7 +72,7 @@ func (a *app) rootCmd() *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&a.opts.JSONL, "jsonl", false, "emit JSONL output")
 	cmd.PersistentFlags().BoolVar(&a.opts.NoColor, "no-color", false, "disable styled terminal output")
 	cmd.PersistentFlags().BoolVarP(&a.opts.Verbose, "verbose", "v", false, "include additional diagnostics")
-	cmd.AddCommand(a.configCmd(), a.setupCmd(), a.credentialsCmd(), a.providersCmd(), a.cacheCmd(), a.versionCmd(), a.searchCmd(), a.platformCmd(), a.fetchCmd(), a.extractCmd(), a.enrichCmd(), a.citationsCmd(), a.archiveCmd(), a.corpusCmd(), a.renderCmd(), a.crawlCmd(), a.mapCmd(), a.evidenceCmd(), a.researchPackCmd())
+	cmd.AddCommand(a.configCmd(), a.setupCmd(), a.credentialsCmd(), a.providersCmd(), a.cacheCmd(), a.versionCmd(), a.gatherCmd(), a.retrieveCmd(), a.briefCmd(), a.searchCmd(), a.platformCmd(), a.fetchCmd(), a.extractCmd(), a.enrichCmd(), a.citationsCmd(), a.archiveCmd(), a.corpusCmd(), a.renderCmd(), a.crawlCmd(), a.mapCmd(), a.evidenceCmd(), a.researchPackCmd())
 	return cmd
 }
 
@@ -505,6 +506,119 @@ func (a *app) writeData(cmd *cobra.Command, data any, diagnostics any) error {
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), string(b))
 	return nil
+}
+
+func (a *app) gatherCmd() *cobra.Command {
+	var mode, cacheMode string
+	var limit, fetch, maxChars int
+	var savePack, explain bool
+	cmd := &cobra.Command{
+		Use:   "gather QUERY",
+		Short: "Preferred agent command: gather evidence records for a query",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			wf, cleanup, err := a.agentWorkflow()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			resp, ae := wf.Gather(cmd.Context(), agent.GatherRequest{Query: args[0], Mode: mode, Limit: limit, Fetch: fetch, CacheMode: cacheMode, MaxChars: maxChars, SavePack: savePack, ExplainRouting: explain || a.opts.Verbose})
+			if ae != nil {
+				return ae
+			}
+			if a.opts.JSON || a.opts.JSONL {
+				return output.Write(cmd.OutOrStdout(), a.opts, cmd.CommandPath(), resp, nil)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), output.Heading(a.opts, "Gathered evidence"))
+			t := table.NewWriter()
+			t.SetOutputMirror(cmd.OutOrStdout())
+			t.AppendHeader(table.Row{"#", "Title", "Search", "Fetch", "URL"})
+			for i, rec := range resp.Records {
+				t.AppendRow(table.Row{i + 1, rec.Title, rec.SearchProvider, rec.FetchProvider, rec.URL})
+			}
+			t.Render()
+			if resp.EvidencePackPath != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "Evidence pack: %s\n", resp.EvidencePackPath)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&mode, "mode", "auto", "retrieval mode: auto, web, news, scholar, mixed")
+	cmd.Flags().IntVar(&limit, "limit", 8, "maximum search candidates")
+	cmd.Flags().IntVar(&fetch, "fetch", 5, "maximum candidates to fetch/extract")
+	cmd.Flags().StringVar(&cacheMode, "cache", "auto", "cache mode: auto, refresh, only")
+	cmd.Flags().IntVar(&maxChars, "max-chars", 4000, "maximum excerpt characters per record")
+	cmd.Flags().BoolVar(&savePack, "save-pack", false, "save gathered records as an evidence pack")
+	cmd.Flags().BoolVar(&explain, "explain-routing", false, "include routing diagnostics")
+	return cmd
+}
+
+func (a *app) retrieveCmd() *cobra.Command {
+	var kind, cacheMode string
+	var maxChars int
+	var savePack, explain bool
+	cmd := &cobra.Command{
+		Use:   "retrieve INPUT",
+		Short: "Preferred agent command: route a query, URL, DOI, paper ID, or author ID",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			wf, cleanup, err := a.agentWorkflow()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			resp, ae := wf.Retrieve(cmd.Context(), agent.RetrieveRequest{Input: args[0], Kind: kind, CacheMode: cacheMode, MaxChars: maxChars, SavePack: savePack, ExplainRouting: explain || a.opts.Verbose})
+			if ae != nil {
+				return ae
+			}
+			return a.writeData(cmd, resp, nil)
+		},
+	}
+	cmd.Flags().StringVar(&kind, "kind", "auto", "input kind: auto, url, doi, paper, author, query")
+	cmd.Flags().StringVar(&cacheMode, "cache", "auto", "cache mode: auto, refresh, only")
+	cmd.Flags().IntVar(&maxChars, "max-chars", 4000, "maximum excerpt characters per record")
+	cmd.Flags().BoolVar(&savePack, "save-pack", false, "save retrieved records as an evidence pack")
+	cmd.Flags().BoolVar(&explain, "explain-routing", false, "include routing diagnostics")
+	return cmd
+}
+
+func (a *app) briefCmd() *cobra.Command {
+	var mode, cacheMode, format string
+	var limit, fetch, maxChars int
+	var explain bool
+	cmd := &cobra.Command{
+		Use:   "brief QUERY",
+		Short: "Preferred agent command: render gathered evidence as LLM-ready context",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			wf, cleanup, err := a.agentWorkflow()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			resp, ae := wf.Brief(cmd.Context(), agent.BriefRequest{Query: args[0], Mode: mode, Limit: limit, Fetch: fetch, Format: format, CacheMode: cacheMode, MaxChars: maxChars, ExplainRouting: explain || a.opts.Verbose})
+			if ae != nil {
+				return ae
+			}
+			if a.opts.JSON || a.opts.JSONL || strings.EqualFold(format, "json") {
+				opts := a.opts
+				if strings.EqualFold(format, "json") && !opts.JSONL {
+					opts.JSON = true
+				}
+				return output.Write(cmd.OutOrStdout(), opts, cmd.CommandPath(), resp, nil)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), resp.Context)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&format, "format", "markdown", "output format: markdown, json, context")
+	cmd.Flags().StringVar(&mode, "mode", "auto", "retrieval mode: auto, web, news, scholar, mixed")
+	cmd.Flags().IntVar(&limit, "limit", 6, "maximum search candidates")
+	cmd.Flags().IntVar(&fetch, "fetch", 4, "maximum candidates to fetch/extract")
+	cmd.Flags().StringVar(&cacheMode, "cache", "auto", "cache mode: auto, refresh, only")
+	cmd.Flags().IntVar(&maxChars, "max-chars", 1200, "maximum excerpt characters per record")
+	cmd.Flags().BoolVar(&explain, "explain-routing", false, "include routing diagnostics")
+	return cmd
 }
 
 func (a *app) fetchCmd() *cobra.Command {
@@ -1056,4 +1170,12 @@ func (a *app) router() (router.Router, func(), error) {
 		return router.Router{}, cleanup, err
 	}
 	return router.New(cfg, st, credentials.NewKeychainStore()), cleanup, nil
+}
+
+func (a *app) agentWorkflow() (agent.Workflow, func(), error) {
+	cfg, st, cleanup, err := a.loadConfiguredState()
+	if err != nil {
+		return agent.Workflow{}, cleanup, err
+	}
+	return agent.Workflow{Router: router.New(cfg, st, credentials.NewKeychainStore()), Config: cfg, EvidenceDir: config.Dir()}, cleanup, nil
 }

@@ -99,6 +99,31 @@ func TestProvidersListJSON(t *testing.T) {
 	}
 }
 
+func TestAgentCommandsAreTopLevel(t *testing.T) {
+	cmd := (&app{}).rootCmd()
+	for _, name := range []string{"gather", "retrieve", "brief"} {
+		found, _, err := cmd.Find([]string{name, "--help"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if found == nil || found.Name() != name {
+			t.Fatalf("missing top-level command %s", name)
+		}
+	}
+}
+
+func TestAgentCommandRequiresConfig(t *testing.T) {
+	t.Chdir(t.TempDir())
+	_, err := runCLI(t, "gather", "openai", "--json")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	ae, ok := err.(*apperr.Error)
+	if !ok || ae.Code != apperr.CodeConfigMissing {
+		t.Fatalf("err = %#v", err)
+	}
+}
+
 func TestParseEvidenceInputSupportsJSONL(t *testing.T) {
 	items, err := parseEvidenceInput([]byte("{\"url\":\"https://a.example\"}\n{\"url\":\"https://b.example\"}\n"))
 	if err != nil {

@@ -63,6 +63,12 @@ func normalizeRecord(item any) Record {
 		return ""
 	}
 	rec.Provider = copyString("provider")
+	if rec.Provider == "" {
+		rec.Provider = copyString("fetch_provider")
+	}
+	if rec.Provider == "" {
+		rec.Provider = copyString("search_provider")
+	}
 	rec.URL = copyString("url")
 	rec.Title = copyString("title")
 	rec.RetrievedAt = copyString("retrieved_at")

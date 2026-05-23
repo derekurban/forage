@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Added agent-first `gather`, `retrieve`, and `brief` commands.
+- Added an internal agent workflow layer that composes search, fetch/extraction, enrichment, routing diagnostics, cache, and evidence pack creation.
+- Added public Go aliases and client helpers for agent gather/retrieve/brief workflows.
+- Reworked README and CLI usage docs so agent commands are documented before lower-level primitives.
+
 ## v0.1.6
 
 - Cleared stale negative-cache entries whenever a successful record is stored, so an earlier `--cache only` miss cannot continue blocking later refresh results.

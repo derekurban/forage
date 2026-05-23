@@ -2,6 +2,111 @@
 
 `forage` is a provider-aware research retrieval CLI. It exposes stable capabilities and hides provider fallback, quota cooldown, and credential lookup behind the router.
 
+## Agent-First Commands
+
+These are the preferred commands for agents. They return evidence records rather than forcing the caller to manually chain `search`, `fetch`, and `extract`.
+
+```powershell
+forage gather "latest OpenAI model pricing" --json
+forage retrieve "https://example.com" --json
+forage retrieve "10.1038/nature12373" --json
+forage brief "Browserbase search API docs" --format markdown
+```
+
+Use primitives such as `search web`, `fetch`, and `extract` when you need explicit provider debugging or a single low-level capability.
+
+### `gather`
+
+Collect usable evidence records for a query:
+
+```powershell
+forage gather "Tavily API rate limits" --mode auto --limit 8 --fetch 5 --json
+forage gather "AI regulation" --mode mixed --limit 9 --fetch 6 --save-pack --json
+```
+
+Useful flags:
+
+```powershell
+--mode auto|web|news|scholar|mixed
+--limit 8
+--fetch 5
+--cache auto|refresh|only
+--max-chars 4000
+--save-pack
+--explain-routing
+```
+
+JSON `data` contains:
+
+```json
+{
+  "query": "Tavily API rate limits",
+  "mode": "auto",
+  "records": [
+    {
+      "title": "...",
+      "url": "...",
+      "source_domain": "...",
+      "search_provider": "brave",
+      "fetch_provider": "jina",
+      "text": "...",
+      "retrieved_at": "...",
+      "content_hash": "...",
+      "quality_score": 0.95,
+      "cache_status": "miss"
+    }
+  ],
+  "evidence_pack_path": ".forage/evidence/<id>.json"
+}
+```
+
+### `retrieve`
+
+Route arbitrary input without requiring the caller to classify it:
+
+```powershell
+forage retrieve "Browserbase free tier limits" --json
+forage retrieve "https://example.com" --json
+forage retrieve "10.1038/nature12373" --json
+forage retrieve "0000-0002-1825-0097" --json
+```
+
+Useful flags:
+
+```powershell
+--kind auto|url|doi|paper|author|query
+--cache auto|refresh|only
+--max-chars 4000
+--save-pack
+--explain-routing
+```
+
+JSON `data` contains `input`, inferred or forced `kind`, `result`, normalized `records`, optional `routing`, and optional `evidence_pack_path`.
+
+### `brief`
+
+Render gathered evidence as compact source-numbered context blocks:
+
+```powershell
+forage brief "Browserbase search API docs" --format markdown
+forage brief "OpenAlex API rate limits" --format context --max-chars 1000
+forage brief "machine learning benchmarks" --mode mixed --json
+```
+
+Useful flags:
+
+```powershell
+--format markdown|json|context
+--mode auto|web|news|scholar|mixed
+--limit 6
+--fetch 4
+--cache auto|refresh|only
+--max-chars 1200
+--explain-routing
+```
+
+Markdown/context output is designed to be pasted directly into an LLM context window. JSON output includes both `records` and the rendered `context`.
+
 ## Setup
 
 Create the global config:
@@ -62,7 +167,7 @@ forage providers quota --reset-local brave
 
 Use `--json` for agent-safe output and `--verbose` or `--explain-routing` for provider attempts.
 
-## Search
+## Advanced Search Primitives
 
 ```powershell
 forage search web "query" --limit 10 --json
@@ -82,7 +187,7 @@ Useful flags:
 --explain-routing
 ```
 
-## Fetch, Extract, Render, Crawl
+## Advanced Fetch, Extract, Render, Crawl
 
 ```powershell
 forage fetch https://example.com --providers direct --json
