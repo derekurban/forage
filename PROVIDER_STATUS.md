@@ -18,6 +18,8 @@ These providers are part of default routing and have adapter coverage in the cur
 
 Scholarly commands return compact normalized records by default. Use `--raw` on `scholar`, `scholar doi`, `scholar paper`, or `scholar citations` when an agent needs provider-specific fields outside the normalized contract.
 
+Citation commands also include summary fields for `source_scope`, `records_returned`, optional `provider_total`, and `coverage_note`. These fields are intentionally present because citation providers have different corpus coverage and sparse results need to be interpreted cautiously.
+
 ## Removed
 
 These providers are intentionally removed from setup, default routing, and product documentation because they do not serve the reduced primitive set:

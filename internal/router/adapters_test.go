@@ -228,6 +228,9 @@ func TestHTTPAdapterArchiveEnrichAndCorpusProviders(t *testing.T) {
 			if !ok || len(c.Records) != 1 || c.Records[0].CitingDOI != "10.2/y" || c.Records[0].Year != 2024 {
 				t.Fatalf("citations = %#v", got)
 			}
+			if c.Summary["source_scope"] == "" || c.Summary["coverage_note"] == "" || c.Summary["records_returned"] != 1 {
+				t.Fatalf("summary = %#v", c.Summary)
+			}
 			return nil
 		}},
 	}

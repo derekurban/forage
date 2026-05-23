@@ -460,12 +460,82 @@ func (a *app) writeData(cmd *cobra.Command, data any, diagnostics any) error {
 	if a.opts.JSON || a.opts.JSONL {
 		return output.Write(cmd.OutOrStdout(), a.opts, cmd.CommandPath(), data, diagnostics)
 	}
+	if a.writeHumanData(cmd, data) {
+		return nil
+	}
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return err
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), string(b))
 	return nil
+}
+
+func (a *app) writeHumanData(cmd *cobra.Command, data any) bool {
+	switch v := data.(type) {
+	case capability.ExtractResponse:
+		fmt.Fprintln(cmd.OutOrStdout(), output.Heading(a.opts, "Extracted documents"))
+		t := table.NewWriter()
+		t.SetOutputMirror(cmd.OutOrStdout())
+		t.AppendHeader(table.Row{"#", "Title", "Provider", "Quality", "URL"})
+		for i, item := range v.Documents {
+			d := item.Document
+			t.AppendRow(table.Row{i + 1, d.Title, d.Provider, fmt.Sprintf("%.2f", d.QualityScore), d.URL})
+		}
+		t.Render()
+		return true
+	case capability.DataResponse:
+		return a.writeHumanDataResponse(cmd, v)
+	}
+	return false
+}
+
+func (a *app) writeHumanDataResponse(cmd *cobra.Command, resp capability.DataResponse) bool {
+	switch v := resp.Data.(type) {
+	case capability.ScholarlyEnrichment:
+		fmt.Fprintln(cmd.OutOrStdout(), output.Heading(a.opts, resp.Capability))
+		t := table.NewWriter()
+		t.SetOutputMirror(cmd.OutOrStdout())
+		t.AppendHeader(table.Row{"Field", "Value"})
+		t.AppendRow(table.Row{"Provider", v.Provider})
+		if v.Record != nil {
+			t.AppendRow(table.Row{"Title", v.Record.Title})
+			t.AppendRow(table.Row{"DOI", v.Record.DOI})
+			if v.Record.Year != 0 {
+				t.AppendRow(table.Row{"Year", v.Record.Year})
+			}
+			if v.Record.CitationCount != 0 {
+				t.AppendRow(table.Row{"Citations", v.Record.CitationCount})
+			}
+			if v.Record.URL != "" {
+				t.AppendRow(table.Row{"URL", v.Record.URL})
+			}
+		}
+		if v.OpenAccess != nil {
+			t.AppendRow(table.Row{"Open Access", fmt.Sprintf("%v %s", v.OpenAccess.IsOA, v.OpenAccess.Status)})
+			if v.OpenAccess.PDFURL != "" {
+				t.AppendRow(table.Row{"OA PDF", v.OpenAccess.PDFURL})
+			} else if v.OpenAccess.URL != "" {
+				t.AppendRow(table.Row{"OA URL", v.OpenAccess.URL})
+			}
+		}
+		t.Render()
+		return true
+	case capability.CitationResponse:
+		fmt.Fprintln(cmd.OutOrStdout(), output.Heading(a.opts, "Citation records"))
+		if note, _ := v.Summary["coverage_note"].(string); note != "" {
+			fmt.Fprintln(cmd.OutOrStdout(), note)
+		}
+		t := table.NewWriter()
+		t.SetOutputMirror(cmd.OutOrStdout())
+		t.AppendHeader(table.Row{"#", "Citing DOI", "Year", "Title"})
+		for i, r := range v.Records {
+			t.AppendRow(table.Row{i + 1, r.CitingDOI, r.Year, r.Title})
+		}
+		t.Render()
+		return true
+	}
+	return false
 }
 
 func (a *app) extractCmd() *cobra.Command {
@@ -506,7 +576,7 @@ func (a *app) extractCmd() *cobra.Command {
 					docs = append(docs, resp)
 				}
 			}
-			return a.writeData(cmd, docs, nil)
+			return a.writeData(cmd, capability.ExtractResponse{Documents: docs, Count: len(docs)}, nil)
 		},
 	}
 	cmd.Flags().BoolVar(&stdin, "stdin", false, "read URLs from stdin")

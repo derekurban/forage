@@ -33,6 +33,8 @@ forage extract "https://example.com/article" --json
 forage extract urls.txt --jsonl
 ```
 
+Extraction JSON always returns `data.documents`, even for a single URL, so agents can consume one stable shape.
+
 Search or enrich scholarly material:
 
 ```powershell
@@ -42,6 +44,8 @@ forage scholar paper "10.1038/nature12373" --json
 forage scholar citations "10.1038/nature12373" --json
 forage scholar doi "10.1038/nature12373" --raw --json
 ```
+
+Citation results include provider scope and coverage notes in `summary`; sparse provider output should be treated as coverage-limited evidence, not proof that no citations exist.
 
 Check archive availability for a URL:
 

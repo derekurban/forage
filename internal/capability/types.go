@@ -84,6 +84,11 @@ type FetchResponse struct {
 	CacheStatus string              `json:"cache_status,omitempty"`
 }
 
+type ExtractResponse struct {
+	Documents []FetchResponse `json:"documents"`
+	Count     int             `json:"count"`
+}
+
 type SearchResult struct {
 	URL          string     `json:"url,omitempty"`
 	CanonicalURL string     `json:"canonical_url,omitempty"`

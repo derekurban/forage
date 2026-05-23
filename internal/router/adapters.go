@@ -216,7 +216,7 @@ func (a HTTPAdapter) Citations(ctx context.Context, req capability.DataRequest) 
 			}
 			records = append(records, rec)
 		}
-		resp := capability.CitationResponse{DOI: doi, Records: records, Provider: a.id, Summary: map[string]any{"count": len(records)}}
+		resp := capability.CitationResponse{DOI: doi, Records: records, Provider: a.id, Summary: citationSummary(a.id, len(records), 0, "OpenCitations returns citation links present in its indexed citation corpus; sparse results mean limited provider coverage, not necessarily no citations.")}
 		if req.IncludeRaw {
 			resp.Raw = raw
 		}
@@ -226,7 +226,7 @@ func (a HTTPAdapter) Citations(ctx context.Context, req capability.DataRequest) 
 		if err != nil {
 			return nil, err
 		}
-		return capability.CitationResponse{DOI: doi, Provider: a.id, Summary: map[string]any{"count": 0, "note": "Crossref does not expose citing works through this route; returned no citation records"}, Raw: includeRaw(req.IncludeRaw, raw)}, nil
+		return capability.CitationResponse{DOI: doi, Provider: a.id, Summary: citationSummary(a.id, 0, 0, "Crossref is used as fallback metadata only here; it does not expose citing-work records through this route."), Raw: includeRaw(req.IncludeRaw, raw)}, nil
 	case "openalex":
 		key, _ := a.creds.Get("openalex", "OPENALEX_API_KEY")
 		lookup := "https://api.openalex.org/works/doi:" + url.PathEscape(cleanDOI(doi))
@@ -260,7 +260,9 @@ func (a HTTPAdapter) Citations(ctx context.Context, req capability.DataRequest) 
 			}
 			records = append(records, rec)
 		}
-		resp := capability.CitationResponse{DOI: doi, Records: records, Provider: a.id, Summary: map[string]any{"count": len(records), "openalex_work": workID}}
+		total := intField(raw.Meta, "count")
+		resp := capability.CitationResponse{DOI: doi, Records: records, Provider: a.id, Summary: citationSummary(a.id, len(records), total, "OpenAlex returns works matching cites:<work>; returned records are limited by the command limit and OpenAlex coverage.")}
+		resp.Summary["openalex_work"] = workID
 		if req.IncludeRaw {
 			resp.Raw = raw
 		}
@@ -287,7 +289,7 @@ func (a HTTPAdapter) Citations(ctx context.Context, req capability.DataRequest) 
 			}
 			records = append(records, rec)
 		}
-		resp := capability.CitationResponse{DOI: doi, Records: records, Provider: a.id, Summary: map[string]any{"count": len(records)}}
+		resp := capability.CitationResponse{DOI: doi, Records: records, Provider: a.id, Summary: citationSummary(a.id, len(records), 0, "Semantic Scholar returns citing papers available in its graph; public unauthenticated access may be rate-limited and coverage varies by work.")}
 		if req.IncludeRaw {
 			resp.Raw = raw
 		}
@@ -966,6 +968,35 @@ func normalizeSemanticScholarPaper(raw semanticScholarPaper, provider string, in
 		rec.Raw = raw
 	}
 	return rec
+}
+
+func citationSummary(provider string, returned, total int, note string) map[string]any {
+	s := map[string]any{
+		"provider":         provider,
+		"records_returned": returned,
+		"count":            returned,
+		"source_scope":     citationScope(provider),
+		"coverage_note":    note,
+	}
+	if total > 0 {
+		s["provider_total"] = total
+	}
+	return s
+}
+
+func citationScope(provider string) string {
+	switch provider {
+	case "opencitations":
+		return "indexed DOI-to-DOI citation links"
+	case "openalex":
+		return "OpenAlex works citing the requested work"
+	case "semantic_scholar":
+		return "Semantic Scholar graph citing papers"
+	case "crossref":
+		return "fallback bibliographic metadata only"
+	default:
+		return "provider-specific citation coverage"
+	}
 }
 
 func semanticAuthors(in []struct{ Name string }) []string {

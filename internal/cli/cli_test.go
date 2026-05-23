@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/derekurban/forage/internal/apperr"
+	"github.com/derekurban/forage/internal/capability"
 	"github.com/derekurban/forage/internal/output"
+	"github.com/spf13/cobra"
 )
 
 func runCLI(t *testing.T, args ...string) (string, error) {
@@ -122,4 +125,48 @@ func TestScholarCommandRequiresConfig(t *testing.T) {
 	if !ok || ae.Code != apperr.CodeConfigMissing {
 		t.Fatalf("err = %#v", err)
 	}
+}
+
+func TestExtractResponseUsesDocumentsContainer(t *testing.T) {
+	data := capability.ExtractResponse{Documents: []capability.FetchResponse{{Document: capability.ExtractedDocument{URL: "https://example.com", Provider: "direct"}}}, Count: 1}
+	var out bytes.Buffer
+	err := (&app{opts: output.Options{JSON: true}}).writeData(commandWithOutput(&out), data, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var env struct {
+		Data struct {
+			Documents []any `json:"documents"`
+			Document  any   `json:"document"`
+			Count     int   `json:"count"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if len(env.Data.Documents) != 1 || env.Data.Document != nil || env.Data.Count != 1 {
+		t.Fatalf("extract data shape = %s", out.String())
+	}
+}
+
+func TestHumanCitationOutputIsNotRawJSON(t *testing.T) {
+	resp := capability.DataResponse{Capability: capability.CitationsDOI, Data: capability.CitationResponse{
+		DOI: "10.1/x", Provider: "opencitations",
+		Summary: map[string]any{"coverage_note": "coverage varies"},
+		Records: []capability.CitationRecord{{CitingDOI: "10.2/y", Year: 2024, Title: "Paper", Provider: "opencitations"}},
+	}}
+	var out bytes.Buffer
+	err := (&app{}).writeData(commandWithOutput(&out), resp, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.HasPrefix(strings.TrimSpace(out.String()), "{") || !strings.Contains(out.String(), "Citation records") {
+		t.Fatalf("unexpected human output:\n%s", out.String())
+	}
+}
+
+func commandWithOutput(out *bytes.Buffer) *cobra.Command {
+	cmd := &cobra.Command{Use: "forage test"}
+	cmd.SetOut(out)
+	return cmd
 }

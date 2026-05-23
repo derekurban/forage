@@ -32,7 +32,7 @@ Flags:
 --explain-routing    include provider routing diagnostics
 ```
 
-Returned records include URL, title when available, Markdown/plain text, provider, extraction method, retrieved timestamp, content hash, quality score, and cache status.
+Returned records are always under `data.documents`, whether extracting one URL or a batch. Each item includes `document`, `cache_status`, and optional routing diagnostics; each document includes URL, title when available, Markdown/plain text, provider, extraction method, retrieved timestamp, content hash, and quality score.
 
 Use this after native search has found candidate sources.
 
@@ -57,7 +57,7 @@ Flags:
 --raw                include raw provider payloads in JSON output
 ```
 
-Use this when native search is not enough for DOI metadata, paper identifiers, citation expansion, PubMed/arXiv-style records, open-access lookup, or dataset metadata. Default output is compact and normalized for agents; `--raw` keeps provider-specific payloads available when you need fields outside the normalized contract.
+Use this when native search is not enough for DOI metadata, paper identifiers, citation expansion, PubMed/arXiv-style records, open-access lookup, or dataset metadata. Default output is compact and normalized for agents; `--raw` keeps provider-specific payloads available when you need fields outside the normalized contract. Citation responses include a `summary` with provider scope and coverage notes so sparse results are not mistaken for complete citation graphs.
 
 ## `archive`
 
